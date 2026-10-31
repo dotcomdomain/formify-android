@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Your check-in</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .visit { max-width: 480px; margin: 0 auto; padding: 0 0 40px; min-height: 100vh; background: #fff; }
+  .visit .k-head { background: var(--brand); color: #fff; padding: 18px; font-weight: 700; }
+  .visit .in { padding: 24px 18px; }
+  .big { font-size: 72px; font-weight: 800; color: var(--brand); line-height: 1; margin: 6px 0 18px; }
+  .code { font-size: 44px; font-weight: 800; letter-spacing: .3em; margin: 6px 0 4px; }
+  .state { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .box { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
+  .visit button { width: 100%; font-size: 19px; padding: 16px; background: var(--brand); }
+</style>
+</head>
+<body style="background:#fff">
+<div class="visit">
+  <div class="k-head" id="name">Your check-in</div>
+  <div class="in" id="v"><p class="muted">Loading...</p></div>
+</div>
+<script type="module">
+const token = location.hash.slice(1);
+const v = document.getElementById("v");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let timer;
+
+async function load() {
+  const r = await fetch(`/api/visit/${encodeURIComponent(token)}`);
+  if (!r.ok) { v.innerHTML = "<p>We couldn't find this check-in.</p>"; return clearInterval(timer); }
+  const d = await r.json();
+  document.documentElement.style.setProperty("--brand", d.brand_color);
+  document.getElementById("name").textContent = d.name;
+  const states = {
+    pending: ["You're checked in", "Show the code at the kiosk when you arrive, or tap the button once you're inside."],
+    waiting: [d.ahead ? `${d.ahead} ahead of you` : "You're next", d.wait_minutes ? `About ${d.wait_minutes} minutes. We'll call your number.` : "We'll call your number shortly."],
+    serving: ["It's your turn", "Please go to the front desk now."],
+    done: ["All done", "Thanks for checking in."],
+    "no-show": ["Check-in closed", "Please see the front desk."]
+  };
+  const [title, sub] = states[d.status] || states.done;
+  v.innerHTML = `<p class="muted">Your number</p><div class="big">${esc(d.ticket)}</div>
+    <div class="state">${esc(title)}</div><p class="muted">${esc(sub)}</p>
+    ${d.status === "pending" ? `<div class="box"><div class="muted small">Arrival code</div><div class="code">${esc(d.code)}</div><div class="muted small">Type this at the kiosk, or:</div></div>
+      <button id="here">I'm here</button>` : ""}
+    <p class="muted small" style="margin-top:28px">Keep this page open. It updates on its own. Tip: Share, then "Add to Home Screen" to check in faster next time.</p>`;
+  document.getElementById("here")?.addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    await fetch(`/api/visit/${encodeURIComponent(token)}`, { method: "POST" });
+    load();
+  });
+}
+load();
+timer = setInterval(load, 5000);
+</script>
+</body>
+</html>

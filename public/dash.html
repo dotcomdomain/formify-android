@@ -19,6 +19,7 @@
     <div class="card stat"><div class="n" id="sWait">-</div><div class="l">Avg. wait (min)</div></div>
     <div class="card stat"><div class="n" id="sSaved">-</div><div class="l">Desk minutes saved today</div></div>
   </div>
+  <p class="muted small" style="margin:-8px 0 16px"><strong id="sPending">0</strong> checked in by phone and on the way.</p>
 
   <div class="grid2" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
     <div class="card">
@@ -66,21 +67,31 @@ async function load() {
   const today = checkins.filter((c) => c.created_at >= start.getTime());
   const waiting = checkins.filter((c) => c.status === "waiting");
   const served = today.filter((c) => c.served_at);
-  const avg = served.length ? served.reduce((a, c) => a + (c.served_at - c.created_at), 0) / served.length / 60000 : 0;
+  const avg = served.length ? served.reduce((a, c) => a + (c.served_at - (c.arrived_at || c.created_at)), 0) / served.length / 60000 : 0;
 
   $("#sWaiting").textContent = waiting.length;
   $("#sToday").textContent = today.length;
   $("#sWait").textContent = served.length ? avg.toFixed(1) : "-";
   $("#sSaved").textContent = today.length * MANUAL_CHECKIN_MIN;
 
-  const active = checkins.filter((c) => c.status === "waiting" || c.status === "serving" || String(c.id) === reveal).reverse();
+  const order = { serving: 0, waiting: 1, pending: 2 };
+  const active = checkins.filter((c) => c.status in order || String(c.id) === reveal)
+    .sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3) || (a.arrived_at || a.created_at) - (b.arrived_at || b.created_at));
+  $("#sPending").textContent = checkins.filter((c) => c.status === "pending").length;
   $("#empty").hidden = active.length > 0;
+  const openSet = new Set([...document.querySelectorAll("details[open]")].map((d) => d.dataset.d));
   $("#queue").innerHTML = active.map((c) => {
     const details = Object.entries(c.answers).map(([k, v]) => `<div><span class="muted">${esc(labels[k] || k)}:</span> ${v === true ? "Yes" : esc(v)}</div>`).join("");
     const masked = Object.values(c.answers).includes("•••");
-    const next = c.status === "waiting" ? `<button data-s="serving" data-id="${c.id}">Call</button>` : `<button data-s="done" data-id="${c.id}">Done</button>`;
-    return `<tr><td><strong>${esc(c.ticket)}</strong></td><td>${time(c.created_at)}</td><td>${details}${masked ? `<button class="ghost" data-reveal="${c.id}" style="margin-top:6px">Reveal sensitive</button>` : ""}</td>
-      <td><span class="pill">${esc(c.status)}</span></td><td><div class="row" style="gap:6px">${next}<button class="ghost" data-s="no-show" data-id="${c.id}">No-show</button></div></td></tr>`;
+    const flags = (c.flags || []).map((f) => `<span class="flag${/now|urgent|chest|breath|bleed/i.test(f) ? " urgent" : ""}">${esc(f)}</span>`).join("");
+    const note = c.summary ? `<div class="summary">${esc(c.summary)}</div>${flags}` : Date.now() - c.created_at < 60000 ? `<div class="muted small">Writing handoff note...</div>` : "";
+    const next = c.status === "waiting" ? `<button data-s="serving" data-id="${c.id}">Call</button>`
+      : c.status === "serving" ? `<button data-s="done" data-id="${c.id}">Done</button>` : "";
+    const statusLabel = c.status === "pending" ? "on the way" : c.status;
+    return `<tr${c.status === "pending" ? ' style="opacity:.7"' : ""}><td><strong>${esc(c.ticket)}</strong><div class="muted small">${esc(c.channel || "kiosk")}</div></td>
+      <td>${time(c.arrived_at || c.created_at)}${c.status === "pending" ? '<div class="muted small">pre-checked</div>' : ""}</td>
+      <td>${note}<details data-d="${c.id}"${openSet.has(String(c.id)) || String(c.id) === reveal ? " open" : ""}><summary>Answers</summary>${details}${masked ? `<button class="ghost" data-reveal="${c.id}" style="margin-top:6px">Reveal sensitive</button>` : ""}</details></td>
+      <td><span class="pill">${esc(statusLabel)}</span></td><td><div class="row" style="gap:6px">${next}<button class="ghost" data-s="no-show" data-id="${c.id}">No-show</button></div></td></tr>`;
   }).join("");
 
   const hours = Array.from({ length: 16 }, (_, i) => today.filter((c) => new Date(c.created_at).getHours() === i + 6).length);

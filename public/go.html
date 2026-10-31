@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Check-in">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Check in</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="fullkiosk">
+<div id="k"><p class="muted" style="padding:30px">Loading...</p></div>
+<script type="module">
+import { mountKiosk } from "/render.js";
+
+const id = new URLSearchParams(location.search).get("id");
+const root = document.getElementById("k");
+const r = id ? await fetch(`/api/kiosks/${encodeURIComponent(id)}`) : null;
+if (!r?.ok) {
+  root.innerHTML = '<p style="padding:30px">Scan the QR code at the front desk to check in.</p>';
+} else {
+  const { config } = await r.json();
+  document.title = `Check in · ${config.name}`;
+  mountKiosk(root, config, {
+    mode: "phone",
+    onSubmit: async (body) => {
+      const res = await fetch(`/api/kiosks/${encodeURIComponent(id)}/checkins`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      return data;
+    },
+    // The token goes in the URL fragment so it never reaches server logs or referrers.
+    onDone: (result) => { location.href = `/visit.html#${result.token}`; }
+  });
+}
+</script>
+</body>
+</html>
