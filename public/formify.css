@@ -115,7 +115,7 @@ body.app::before {
 .confirm dt { color: var(--muted); }
 .confirm dd { margin: 0; font-weight: 600; }
 .ticketcard { align-self: stretch; background: var(--forest); color: #fff; border-radius: 18px; padding: 20px; animation: rise .4s var(--ease) both; }
-.ticketcard .t { font-family: var(--serif); font-size: 64px; line-height: 1; margin: 4px 0 8px; }
+.ticketcard .t { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 800; font-variant-numeric: lining-nums tabular-nums; font-size: 64px; line-height: 1; margin: 4px 0 8px; }
 .ticketcard a { color: var(--sun); font-weight: 700; }
 .composer { display: flex; gap: 8px; padding: 14px; border-top: 1px solid var(--line); background: var(--cream); }
 .composer input { flex: 1; font-size: 17px; padding: 13px 16px; border-radius: 999px; border: 1px solid var(--line); background: #fff; }
@@ -181,7 +181,7 @@ body.app::before {
 }
 .qcard { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 14px; align-items: start; box-shadow: var(--shadow); animation: rise .35s var(--ease) both; }
 .qcard + .qcard { margin-top: 10px; }
-.qcard .tk { font-family: var(--serif); font-size: 30px; line-height: 1; }
+.qcard .tk { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 800; font-variant-numeric: lining-nums tabular-nums; font-size: 30px; line-height: 1; }
 .qcard .acts { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 150px; }
 .qcard.pending { opacity: .65; }
 @media (max-width: 640px) { .qcard { grid-template-columns: 1fr; } .qcard .acts { flex-direction: row; flex-wrap: wrap; } }
@@ -256,3 +256,15 @@ body.app::before {
 .bthread .quick { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .bthread .quick button { font-size: 12.5px; padding: 5px 10px; background: var(--cream); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; }
 .unread { display: inline-block; background: var(--clay); color: #fff; font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
+
+/* Playbooks */
+.goalcard { display: flex; justify-content: space-between; align-items: center; gap: 16px; background: var(--forest); color: #f3efe5; border-radius: 20px; padding: 20px 24px; margin: 16px 0 4px; box-shadow: var(--shadow); }
+.goalcard .gv { font-family: var(--serif); font-size: 44px; line-height: 1; color: var(--sun); }
+.pbgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 12px; }
+@media (max-width: 700px) { .pbgrid { grid-template-columns: 1fr 1fr; } }
+.pbgrid .pb { display: flex; flex-direction: column; gap: 2px; text-align: left; background: var(--paper); color: var(--ink); border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px; font-size: 13px; font-weight: 500; }
+.pbgrid .pb b { font-family: var(--serif); font-weight: 400; font-size: 17px; }
+.pbgrid .pb:hover { border-color: var(--forest); filter: none; }
+.pbgrid .pb.on { border-color: var(--forest); background: rgba(46,107,82,.08); box-shadow: inset 0 0 0 1px var(--forest); }
+.levers { background: var(--cream); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; }
+.levers .check { font-weight: 500; font-size: 15px; margin: 6px 0; }

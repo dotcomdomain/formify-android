@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Now serving</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { margin: 0; background: var(--b, #0f2a1f); color: #fffaf2; min-height: 100vh; font-family: "Bricolage Grotesque", system-ui, sans-serif; }
+  .board { min-height: 100vh; display: grid; grid-template-columns: 1.2fr 1fr; gap: 4vw; padding: 5vw; box-sizing: border-box; }
+  .lbl { font-size: 1.6vw; font-weight: 700; letter-spacing: .25em; text-transform: uppercase; opacity: .75; }
+  .serving { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 800; font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.02em; font-size: 15vw; line-height: .95; margin: 2vw 0; }
+  .next { display: flex; flex-direction: column; gap: 1.2vw; margin-top: 2vw; }
+  .next div { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 800; font-variant-numeric: tabular-nums lining-nums; font-size: 5vw; background: rgba(255,255,255,.1); border-radius: 1.2vw; padding: 1vw 2vw; display: flex; justify-content: space-between; align-items: center; }
+  .next span { font-family: "Bricolage Grotesque", sans-serif; font-size: 1.5vw; font-weight: 700; background: #f2c14e; color: #0f2a1f; padding: .4vw 1vw; border-radius: 999px; }
+  .foot { position: fixed; left: 5vw; right: 5vw; bottom: 3vw; display: flex; justify-content: space-between; font-size: 1.6vw; opacity: .85; }
+  .ready { font-size: 3vw; margin-top: 1vw; }
+</style>
+</head>
+<body>
+<div class="board">
+  <div><div class="lbl" id="name">Now serving</div><div class="serving" id="serving">–</div><div class="ready" id="ready"></div></div>
+  <div><div class="lbl">Up next</div><div class="next" id="next"></div></div>
+</div>
+<div class="foot"><span id="wait"></span><span>Skip the line next time: check in on your phone with Formify</span></div>
+<script type="module">
+const id = new URLSearchParams(location.search).get("id");
+const $ = (s) => document.getElementById(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+let last = "";
+// Spoken call when the ticket being served changes (needs one tap on the screen to allow audio).
+function call(ticket) { try { const u = new SpeechSynthesisUtterance(`Now serving ${ticket.split("").join(" ")}`); speechSynthesis.speak(u); } catch {} }
+async function load() {
+  const r = await fetch(`/api/kiosks/${encodeURIComponent(id)}/now`);
+  if (!r.ok) { $("serving").textContent = "Not found"; return; }
+  const d = await r.json();
+  document.body.style.setProperty("--b", d.brand_color);
+  $("name").textContent = `Now serving · ${d.name}`;
+  const now = d.serving.join("  ") || "–";
+  if (now !== last && d.serving.length && last) call(d.serving.at(-1));
+  last = now;
+  $("serving").textContent = now;
+  $("ready").textContent = d.ready.length ? `Ready for pickup: ${d.ready.join(", ")}` : "";
+  $("next").innerHTML = d.next.map((n) => `<div>${esc(n.ticket)}${n.express ? "<span>Express</span>" : ""}</div>`).join("") || '<div style="opacity:.6">No one waiting</div>';
+  $("wait").textContent = d.next.length ? `About ${d.wait_minutes} min wait` : "No wait right now";
+}
+load();
+setInterval(load, 4000);
+</script>
+</body>
+</html>

@@ -67,35 +67,38 @@ async function load() {
   document.getElementById("name").textContent = d.name;
   const states = {
     pending: ["You're checked in", "Show the code at the kiosk when you arrive, or tap the button once you're inside."],
-    waiting: [d.ahead ? `${d.ahead} ahead of you` : "You're next", d.wait_minutes ? `About ${d.wait_minutes} minutes. We'll call your number.` : "We'll call your number shortly."],
+    waiting: [d.playbook === "faster_mornings" ? (d.ahead ? `Express line · ${d.ahead} ahead` : "Express line · you're next") : d.ahead ? `${d.ahead} ahead of you` : "You're next", d.wait_minutes ? `About ${d.wait_minutes} minutes. We'll call your number.` : "We'll call your number shortly."],
     serving: d.flow === "dropoff" ? ["In progress", "We're working on it. We'll message you when it's ready."] : ["It's your turn", "Please go to the front desk now."],
     ready: ["Ready for pickup", "Come pick it up whenever you're ready."],
     payment: [`Your total is $${((d.amount_cents || 0) / 100).toFixed(2)}`, "Pay here on your phone, or at the counter."],
     done: d.flow === "forms_only" && !d.paid_at ? ["Received", "Your form is in. Nothing else to do."] : [d.paid_at ? `Paid $${((d.amount_cents || 0) / 100).toFixed(2)}` : "All done", d.paid_at ? ({ card: "Paid by card. Thanks for coming in!", phone: "Paid from your phone. Thanks for coming in!" }[d.pay_method] || "Paid at the counter. Thanks for coming in!") : "Thanks for checking in."],
-    "no-show": ["Check-in closed", "Please see the front desk."]
+    "no-show": ["Check-in closed", "Please see the front desk."],
+    cancelled: ["Visit cancelled", "Thanks for letting them know. You can check in again any time."]
   };
   const [title, sub] = states[d.status] || states.done;
   v.innerHTML = `<p class="muted">Your number</p><div class="big">${esc(d.ticket)}</div>
     <div class="state">${esc(title)}</div><p class="muted">${esc(sub)}</p>
+    ${d.deposit_cents && !d.deposit_paid && ["pending", "waiting"].includes(d.status) ? `<div class="box"><div class="state" style="font-size:17px">Hold your spot</div><p class="muted small" style="margin:0 0 10px">A $${(d.deposit_cents / 100).toFixed(2)} deposit holds your booking. It's kept if you don't show up.</p><button id="deposit">Pay $${(d.deposit_cents / 100).toFixed(2)} deposit</button></div>` : ""}
+    ${d.deposit_cents && d.deposit_paid ? `<p class="small" style="margin:0 0 12px"><span class="pill ok">Deposit paid $${(d.deposit_cents / 100).toFixed(2)}</span></p>` : ""}
     ${d.status === "payment" ? `<button id="pay">Pay $${((d.amount_cents || 0) / 100).toFixed(2)}</button><p class="muted small" style="margin-top:8px">${d.payments === "test" ? "Stripe test mode: use card 4242 4242 4242 4242, any future date, any CVC. No real money moves." : "Demo payment: no card is charged."}</p>` : ""}
     ${d.status === "pending" ? `<div class="box"><div class="muted small">Arrival code</div><div class="code">${esc(d.code)}</div><div class="muted small">Type this at the kiosk, or:</div></div>
       <button id="here">I'm here</button>` : ""}
+    ${["pending", "waiting"].includes(d.status) ? '<button id="cancel" class="ghostbtn" style="margin-top:14px">Can\'t make it? Cancel my visit</button>' : ""}
     <p class="muted small" style="margin-top:28px">Keep this page open. It updates on its own. Tip: Share, then "Add to Home Screen" to check in faster next time.</p>`;
   document.getElementById("here")?.addEventListener("click", async (e) => {
     e.target.disabled = true;
     await fetch(`/api/visit/${encodeURIComponent(token)}`, { method: "POST" });
     load();
   });
+  document.getElementById("deposit")?.addEventListener("click", (e) => payNow(e, "deposit"));
+  document.getElementById("cancel")?.addEventListener("click", async (e) => {
+    if (e.target.dataset.armed !== "1") { e.target.dataset.armed = "1"; e.target.textContent = "Tap again to cancel"; return; }
+    await fetch(`/api/visit/${encodeURIComponent(token)}/cancel`, { method: "POST" });
+    lastCount = -1; load(); loadThread();
+  });
+  rebookId = d.kiosk_id;
   document.getElementById("pay")?.addEventListener("click", async (e) => {
-    e.target.disabled = true;
-    e.target.textContent = "Paying...";
-    // Stripe Checkout when the business has it set up; otherwise the demo payment.
-    const r = await fetch(`/api/visit/${encodeURIComponent(token)}/checkout`, { method: "POST" });
-    const c = await r.json().catch(() => ({}));
-    if (c.url) { location.href = c.url; return; }
-    if (!r.ok) { e.target.textContent = c.error || "Payment failed. Pay at the counter."; return; }
-    await fetch(`/api/visit/${encodeURIComponent(token)}/pay`, { method: "POST" });
-    load();
+    payNow(e, "total");
   });
   showRating(d);
 }
@@ -136,6 +139,20 @@ function showRating(d) {
     };
   } else box.innerHTML = "";
 }
+// Stripe Checkout when the business has it set up; otherwise the demo payment.
+async function payNow(e, kind) {
+  e.target.disabled = true;
+  e.target.textContent = "Paying...";
+  const body = JSON.stringify({ kind });
+  const r = await fetch(`/api/visit/${encodeURIComponent(token)}/checkout`, { method: "POST", headers: { "content-type": "application/json" }, body });
+  const c = await r.json().catch(() => ({}));
+  if (c.url) { location.href = c.url; return; }
+  if (!r.ok) { e.target.textContent = c.error || "Payment failed. Pay at the counter."; return; }
+  await fetch(`/api/visit/${encodeURIComponent(token)}/pay`, { method: "POST", headers: { "content-type": "application/json" }, body });
+  lastCount = -1; load(); loadThread();
+}
+let rebookId = null;
+
 // ---------- Visit thread ----------
 let lastCount = -1;
 const QUICK = ["Running about 10 minutes late", "Can I reschedule?", "I have a question about my visit"];
@@ -148,11 +165,18 @@ async function loadThread() {
   const box = document.getElementById("thread");
   box.innerHTML = messages.map((m) => {
     const t = new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (m.kind === "rebook") return `<div class="tm receipt" style="font-weight:500">${esc(m.body)}<button type="button" data-rebook style="margin-top:8px;font-size:15px;padding:10px">Rebook</button></div>`;
+    if (m.kind === "offer") return `<div class="tm receipt" style="background:#fff4d6;border-color:#f2c14e">${esc(m.body)} · ${t}</div>`;
     if (m.sender === "system") return `<div class="tm ${m.kind === "receipt" ? "receipt" : "system"}">${m.kind === "receipt" ? "Receipt · " : ""}${esc(m.body)} · ${t}</div>`;
     return `<div class="tm ${m.sender}">${m.sender === "business" ? `<span class="who">${esc(m.author || "Staff")} · ${t}</span>` : ""}${esc(m.body)}</div>`;
   }).join("");
   box.lastElementChild?.scrollIntoView({ block: "nearest" });
 }
+document.getElementById("thread").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-rebook]") || !rebookId) return;
+  fetch(`/api/kiosks/${encodeURIComponent(rebookId)}/events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "rebook" }) }).catch(() => {});
+  location.href = `/#checkin/${encodeURIComponent(rebookId)}`;
+});
 document.getElementById("quick").innerHTML = QUICK.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("");
 document.getElementById("quick").addEventListener("click", (e) => { const q = e.target.dataset.q; if (q) sendMsg(q); });
 document.getElementById("sendf").addEventListener("submit", (e) => { e.preventDefault(); const i = document.getElementById("msg"); if (i.value.trim()) { sendMsg(i.value); i.value = ""; } });

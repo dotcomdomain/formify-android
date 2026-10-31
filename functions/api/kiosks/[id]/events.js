@@ -1,5 +1,5 @@
 // Anonymous usage counts (page view, form started). No visitor identifiers are stored.
-const TYPES = ["view", "start"];
+const TYPES = ["view", "start", "rebook"];
 
 export async function onRequestPost({ params, request, env }) {
   const { type } = await request.json().catch(() => ({}));

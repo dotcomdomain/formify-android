@@ -1,4 +1,5 @@
 import { SCHEMA, sanitize, pickTemplate } from "../../lib/config.js";
+import { guessPlaybook } from "../../lib/playbooks.js";
 
 const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
@@ -25,9 +26,9 @@ export async function onRequestPost({ request, env }) {
       max_tokens: 1500
     });
     const raw = typeof out.response === "string" ? JSON.parse(out.response) : out.response;
-    return Response.json({ config: sanitize(raw), source: "ai" });
+    return Response.json({ config: sanitize({ ...raw, playbook: guessPlaybook(text) }), source: "ai" });
   } catch (err) {
     // Demo must never dead-end: fall back to the closest template and say so.
-    return Response.json({ config: sanitize(pickTemplate(text)), source: "template", note: String(err.message || err).slice(0, 200) });
+    return Response.json({ config: sanitize({ ...pickTemplate(text), playbook: guessPlaybook(text) }), source: "template", note: String(err.message || err).slice(0, 200) });
   }
 }

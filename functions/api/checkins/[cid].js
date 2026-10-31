@@ -2,6 +2,7 @@ import { ownsKiosk, json } from "../../../lib/auth.js";
 import { loadConfig } from "../../../lib/queue.js";
 import { addMessage, statusMessage } from "../../../lib/thread.js";
 import { emit } from "../../../lib/webhook.js";
+import { offerFreedSpot, afterDone, noShowNote } from "../../../lib/levers.js";
 
 const STATUSES = ["waiting", "serving", "ready", "payment", "done", "no-show"];
 
@@ -26,13 +27,16 @@ export async function onRequestPatch({ params, request, env, waitUntil }) {
     await log("paid at counter", `Check-in ${params.cid}`);
   } else {
     const servedAt = status === "serving" ? Date.now() : null;
-    await env.DB.prepare("UPDATE checkins SET status = ?, served_at = COALESCE(?, served_at) WHERE id = ?").bind(status, servedAt, params.cid).run();
+    const readyAt = status === "ready" ? Date.now() : null;
+    await env.DB.prepare("UPDATE checkins SET status = ?, served_at = COALESCE(?, served_at), ready_at = COALESCE(?, ready_at) WHERE id = ?").bind(status, servedAt, readyAt, params.cid).run();
   }
 
-  const now = await env.DB.prepare("SELECT id, ticket, status, amount_cents, paid_at, pay_method FROM checkins WHERE id = ?").bind(params.cid).first();
+  const now = await env.DB.prepare("SELECT id, kiosk_id, ticket, status, amount_cents, paid_at, pay_method, deposit_cents, deposit_paid_at FROM checkins WHERE id = ?").bind(params.cid).first();
   const config = await loadConfig(env, row.kiosk_id);
   const m = statusMessage(now.status, now, config);
-  if (m) await addMessage(env, waitUntil, { checkinId: now.id, kioskId: row.kiosk_id, sender: "system", kind: m.kind, body: m.body });
+  if (m) await addMessage(env, waitUntil, { checkinId: now.id, kioskId: row.kiosk_id, sender: "system", kind: m.kind, body: m.body + (now.status === "no-show" ? noShowNote(now) : "") });
+  if (now.status === "no-show") await offerFreedSpot(env, waitUntil, row.kiosk_id, config, now.id);
+  if (now.status === "done") await afterDone(env, waitUntil, now, config);
   waitUntil(emit(env, row.kiosk_id, "checkin.updated", { checkin_id: now.id, ticket: now.ticket, status: now.status, amount: now.amount_cents ? now.amount_cents / 100 : null, paid: !!now.paid_at, by: member.name }));
   return Response.json({ ok: true });
 }

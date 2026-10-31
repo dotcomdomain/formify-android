@@ -108,6 +108,7 @@ async function renderLive() {
       <a href="/kiosk.html?id=${loc.id}" target="_blank" class="biz-link">Open the kiosk</a></div>
     <div id="alerts" style="margin-top:18px"></div>
     <div id="binbox"></div>
+    <div id="goal"></div>
     <div class="kpis" id="kpis"></div>
     <div id="queue"></div>`);
   first = true; seen = new Set();
@@ -129,6 +130,7 @@ async function loadLive() {
   const served = today.filter((c) => c.served_at);
   const avg = served.length ? served.reduce((a, c) => a + (c.served_at - (c.arrived_at || c.created_at)), 0) / served.length / 60000 : 0;
   const paid = today.filter((c) => c.paid_at).reduce((a, c) => a + (c.amount_cents || 0), 0);
+  $("#goal").innerHTML = goalCard(d.goal);
   $("#kpis").innerHTML = [[d.checkins.filter((c) => c.status === "waiting").length, "waiting now"], [d.checkins.filter((c) => c.status === "pending").length, "on the way (checked in remotely)"],
     [served.length ? avg.toFixed(1) : "–", "avg. wait, minutes"], [money(paid), "paid through Formify today"]].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
 
@@ -148,13 +150,19 @@ async function loadLive() {
     const flags = (c.flags || []).map((f) => `<span class="flag${/now|urgent|chest|breath|bleed/i.test(f) ? " urgent" : ""}">${esc(f)}</span>`).join("");
     const details = Object.entries(c.answers).map(([k, v]) => `<div><span class="muted">${esc(labels[k] || k)}:</span> ${v === true ? "Yes" : esc(v)}</div>`).join("");
     const masked = Object.values(c.answers).includes("•••");
+    // Add-ons the customer ticked pre-fill the cashier total.
+    const addonCents = d.config.steps.flatMap((st) => st.fields).filter((f) => f.price_cents && c.answers[f.id] === true).reduce((a, f) => a + f.price_cents, 0);
+    if (addonCents && amounts[c.id] === undefined) amounts[c.id] = (addonCents / 100).toFixed(2);
+    const badges = [c.deposit_cents ? `<span class="pill ${c.deposit_paid_at ? "ok" : ""}">deposit ${money(c.deposit_cents)} ${c.deposit_paid_at ? "paid" : "unpaid"}</span>` : "",
+      d.goal.playbook === "faster_mornings" && !String(c.channel || "").startsWith("kiosk") ? '<span class="pill ok">express</span>' : "",
+      addonCents ? `<span class="pill">add-ons ${money(addonCents)}</span>` : ""].join(" ");
     const acts = c.status === "waiting" ? `<button data-s="serving" data-id="${c.id}">Call ${esc(c.ticket)}</button>`
       : c.status === "serving" && flow === "dropoff" ? `<button data-s="ready" data-id="${c.id}">Ready for pickup</button>`
       : c.status === "serving" || c.status === "ready" ? `${c.status === "ready" ? '<span class="pill ok">ready for pickup</span>' : ""}<button data-s="done" data-id="${c.id}">Done</button><input data-amt="${c.id}" inputmode="decimal" placeholder="$ total" value="${esc(amounts[c.id] || "")}"><button class="btn-alt" data-pay="${c.id}">Send to cashier</button>`
       : c.status === "payment" ? `<span class="pill payment">awaiting ${money(c.amount_cents)}</span><button data-s="done" data-paid="counter" data-id="${c.id}">Paid at counter</button>`
       : `<span class="pill">on the way</span>`;
     return `<div class="qcard ${c.status === "pending" ? "pending" : ""}">
-      <div><div class="tk">${esc(c.ticket)}${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</div><div class="muted small">${time(c.arrived_at || c.created_at)} · ${esc(c.channel || "kiosk")}</div></div>
+      <div><div class="tk">${esc(c.ticket)}${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</div><div class="muted small">${time(c.arrived_at || c.created_at)} · ${esc(c.channel || "kiosk")}</div><div style="margin-top:6px">${badges}</div></div>
       <div>${c.summary ? `<div class="summary" style="font-size:17px">${esc(c.summary)}</div>${flags}` : Date.now() - c.created_at < 60000 ? '<div class="muted small">Writing handoff note...</div>' : ""}
         <details data-d="${c.id}"${open.has(String(c.id)) || String(c.id) === reveal ? " open" : ""}><summary>Answers</summary>${details}${masked ? `<button class="ghost" data-reveal="${c.id}" style="margin-top:6px">Reveal sensitive (logged)</button>` : ""}</details>
         <button class="ghost small" data-thread="${c.id}" style="margin-top:6px">${openThreads.has(String(c.id)) ? "Hide" : "Messages"}${c.unread ? ` (${c.unread} new)` : ""}</button>
@@ -163,6 +171,13 @@ async function loadLive() {
     </div>`;
   }).join("") : `<div class="empty panel"><b>All clear</b>New check-ins from the kiosk, phones and AI assistants show up here.</div>`;
   for (const id of openThreads) drawThread(id);
+}
+
+function goalCard(g) {
+  if (!g) return "";
+  return `<div class="goalcard"><div><div class="small" style="font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.8">Playbook: ${esc(g.name)} · ${esc(g.goal)}</div>
+    <div class="row" style="gap:16px;align-items:baseline;margin-top:6px"><span class="gv">${esc(g.value)}</span><span><b>${esc(g.metric)}</b> ${esc(g.detail)}</span></div></div>
+    ${me.perms.forms ? `<a href="#forms/${loc.id}" class="small" style="color:inherit">Change goal</a>` : ""}</div>`;
 }
 
 // ---------- Visit threads (business side) ----------
@@ -231,7 +246,7 @@ function renderForms() {
       <a href="#forms/new"><button class="btn-big">New form</button></a></div>
     <div class="cards" style="margin-top:22px">${me.locations.map((l) => `<div class="loccard" style="--b:${esc(l.brand_color)}">
       <h3>${esc(l.name)}</h3><div class="muted small" style="text-transform:capitalize">${esc(l.business_type)}${l.city ? ` · ${esc(l.city)}` : ""} · Ease ${l.ease.avg ?? "–"}</div>
-      <div class="links"><a href="#forms/${l.id}">Edit form</a><a href="/kiosk.html?id=${l.id}" target="_blank">Kiosk</a><a href="/go.html?id=${l.id}" target="_blank">Phone link</a><a href="${me.business.slug ? `/p/${me.business.slug}` : `/#b/${l.id}`}" target="_blank">Public page</a><button data-qr="${l.id}">QR code</button></div>
+      <div class="links"><a href="#forms/${l.id}">Edit form</a><a href="/kiosk.html?id=${l.id}" target="_blank">Kiosk</a><a href="/go.html?id=${l.id}" target="_blank">Phone link</a><a href="/now.html?id=${l.id}" target="_blank">Now serving screen</a><a href="${me.business.slug ? `/p/${me.business.slug}` : `/#b/${l.id}`}" target="_blank">Public page</a><button data-qr="${l.id}">QR code</button></div>
       <div data-qrbox="${l.id}" style="margin-top:12px"></div></div>`).join("") || '<div class="empty panel" style="grid-column:1/-1"><b>No forms yet</b>Create one in a sentence.</div>'}</div>`);
   root.querySelectorAll("[data-qr]").forEach((b) => b.onclick = () => {
     const box = root.querySelector(`[data-qrbox="${b.dataset.qr}"]`);
@@ -274,11 +289,14 @@ function openEditor(id) {
   ed.innerHTML = `<div class="panel">
       <h2 style="font-size:24px">Review before it goes live</h2>
       <p class="muted small">Sensitive fields are hidden from staff until revealed, and every reveal is logged.</p>
+      <div class="step-title">What's your goal?</div>
+      <div class="pbgrid" id="pbgrid"></div>
+      <div id="levers"></div>
       <div class="grid2" style="gap:12px">${f("name", "Business name")}${f("brand_color", "Brand colour", 'type="color" style="height:44px;padding:4px"')}</div>
       <label>Welcome title</label><input data-k="welcome_title">
       <label>Consent text visitors agree to</label><textarea data-k="consent_text" rows="2"></textarea>
       <div class="grid2" style="gap:12px">${f("retention_days", "Delete data after (days)", 'type="number" min="1" max="365"')}${f("avg_service_minutes", "Minutes per visitor", 'type="number" min="1" max="120"')}</div>
-      <label for="flowsel">How do customers come in?</label>
+      <label for="flowsel">How do customers come in? <span class="muted small">(set by your goal; change it if you need to)</span></label>
       <select data-k="flow" id="flowsel">
         <option value="walk_in">Walk in and wait in line</option>
         <option value="appointment">Book ahead, then check in on arrival</option>
@@ -294,8 +312,9 @@ function openEditor(id) {
     </div>
     <div><div class="row" style="justify-content:space-between;margin-bottom:8px"><strong>Live preview</strong><span class="muted small">Try it, including the assistant</span></div>
       <div id="preview" class="panel" style="padding:0;overflow:hidden"></div></div>`;
-  fill(); preview();
+  fill(); drawPlaybooks(); preview();
   ed.addEventListener("input", onEdit);
+  ed.addEventListener("click", onLeverClick);
   ed.addEventListener("change", (e) => { if (e.target.type === "checkbox" || e.target.tagName === "SELECT") preview(); });
   $("#fields").addEventListener("click", (e) => {
     const rm = e.target.closest("[data-rm]")?.dataset.rm;
@@ -334,7 +353,63 @@ function onEdit(e) {
     fld[key] = el.type === "checkbox" ? el.checked : el.value;
     if (key === "type" && fld.type === "select" && !fld.options?.length) fld.options = ["Option 1", "Option 2"];
   }
+  if (el.dataset.lv) {
+    const k = el.dataset.lv;
+    if (k === "deposit") draft.levers.deposit_cents = Math.max(0, Math.round(+el.value * 100) || 0);
+    else if (k === "rebook_weeks") draft.levers.rebook_weeks = +el.value;
+    else draft.levers[k] = el.checked;
+    return;
+  }
+  if (el.dataset.ad) {
+    const [i, key] = el.dataset.ad.split(".");
+    const a = draft.levers.addons[+i];
+    if (key === "name") a.name = el.value; else a.price_cents = Math.max(0, Math.round(+el.value * 100) || 0);
+    syncExtras(); fill(); preview();
+    return;
+  }
   if (el.dataset.k !== undefined || el.dataset.f || el.dataset.st) preview();
+}
+// ---- Playbooks: pick a goal; it presets the flow and switches (server: lib/playbooks.js)
+let PB = null;
+async function drawPlaybooks() {
+  PB ??= (await api("/api/playbooks")).playbooks;
+  if (!draft.playbook || !PB[draft.playbook]) draft.playbook = "fill_chair";
+  draft.levers = { ...PB[draft.playbook].levers, ...(draft.levers || {}) };
+  $("#pbgrid").innerHTML = Object.entries(PB).map(([k, p]) => `<button type="button" class="pb${k === draft.playbook ? " on" : ""}" data-pb="${k}">
+    <b>${esc(p.name)}</b><span>${esc(p.goal)}</span><span class="muted">${esc(p.for)}</span></button>`).join("");
+  const L = draft.levers;
+  $("#levers").innerHTML = `<div class="levers">
+    <label class="check"><input type="checkbox" data-lv="waitlist_offer" ${L.waitlist_offer ? "checked" : ""} style="width:auto"> When someone cancels or no-shows, offer the spot to people on their way</label>
+    <label class="check"><input type="checkbox" data-lv="now_serving" ${L.now_serving ? "checked" : ""} style="width:auto"> "Now serving" screen for the waiting room</label>
+    <div class="grid2" style="gap:12px">
+      <div><label>Deposit to hold a spot booked remotely ($, 0 = none)</label><input type="number" min="0" step="1" data-lv="deposit" value="${(L.deposit_cents || 0) / 100}"></div>
+      <div><label>Invite them back after</label><select data-lv="rebook_weeks">${[0, 1, 2, 3, 4, 6, 8, 12].map((w) => `<option value="${w}"${+L.rebook_weeks === w ? " selected" : ""}>${w ? `${w} week${w > 1 ? "s" : ""}` : "Don't ask"}</option>`).join("")}</select></div>
+    </div>
+    <label>Add-ons customers can pick when they check in</label>
+    <div id="addons">${(L.addons || []).map((a, i) => `<div class="row" style="gap:8px;margin-bottom:6px;flex-wrap:nowrap"><input data-ad="${i}.name" value="${esc(a.name)}" placeholder="Helmet"><input data-ad="${i}.price" type="number" min="0" step="0.01" value="${(a.price_cents / 100).toFixed(2)}" style="max-width:120px"><button type="button" class="x" data-adrm="${i}" aria-label="Remove add-on">&times;</button></div>`).join("")}</div>
+    <button type="button" class="btn-alt small" data-adadd style="padding:7px 12px">Add an add-on</button>
+  </div>`;
+}
+function syncExtras() {
+  // Mirror the server's generated Extras step so the preview shows add-ons right away.
+  draft.steps = draft.steps.filter((st) => st.auto !== "extras");
+  const ads = (draft.levers.addons || []).filter((a) => a.name && a.price_cents > 0);
+  if (ads.length) draft.steps.push({ title: "Extras", auto: "extras", fields: ads.map((a, i) => ({ id: `addon_${i + 1}`, label: `${a.name} (+$${(a.price_cents / 100).toFixed(2)})`, type: "checkbox", required: false, sensitive: false, price_cents: a.price_cents })) });
+}
+function onLeverClick(e) {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.pb) {
+    // A new goal brings its flow and switch defaults, but keeps the owner's add-ons.
+    const addons = draft.levers?.addons || [];
+    draft.playbook = b.dataset.pb;
+    draft.flow = PB[b.dataset.pb].flow;
+    draft.levers = { ...PB[b.dataset.pb].levers, addons };
+    $("#flowsel").value = draft.flow;
+    drawPlaybooks(); preview();
+  }
+  if (b.dataset.adadd !== undefined) { draft.levers.addons = [...(draft.levers.addons || []), { name: "", price_cents: 0 }]; drawPlaybooks(); }
+  if (b.dataset.adrm !== undefined) { draft.levers.addons.splice(+b.dataset.adrm, 1); syncExtras(); fill(); drawPlaybooks(); preview(); }
 }
 let pn = 0;
 function preview() {
@@ -437,7 +512,7 @@ async function renderInsights() {
   const f = d.funnel;
   const finish = f.starts ? Math.round((f.checkins / Math.max(f.starts, f.checkins)) * 100) : null;
   const noShows = d.checkins.filter((c) => c.status === "no-show").length;
-  $("#ins").innerHTML = `<div class="kpis">${[[f.views, "page views"], [f.starts, "started a check-in"], [f.checkins, "checked in"], [finish === null ? "–" : `${finish}%`, "finish rate"]].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
+  $("#ins").innerHTML = `${goalCard(d.goal)}<div class="kpis">${[[f.views, "page views"], [f.starts, "started a check-in"], [f.checkins, "checked in"], [finish === null ? "–" : `${finish}%`, "finish rate"]].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
     <div class="grid2" style="gap:22px">
       <div class="panel"><h2 style="font-size:24px">Ease Score</h2>
         <div class="score" style="--b:var(--forest)"><b style="font-size:52px">${d.ease.avg ? d.ease.avg.toFixed(1) : "–"}</b><span>/ 5 · ${d.ease.count} ratings</span></div>

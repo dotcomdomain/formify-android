@@ -1,6 +1,7 @@
 import { createCheckin } from "../../../../lib/checkin.js";
 import { loadConfig, position } from "../../../../lib/queue.js";
 import { easeFor } from "../../../../lib/ease.js";
+import { goalFor } from "../../../../lib/goals.js";
 import { ownsKiosk, sessionFor, json } from "../../../../lib/auth.js";
 
 const DAY = 86400000;
@@ -29,7 +30,7 @@ export async function onRequestGet({ params, request, env }) {
 
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const { results } = await env.DB.prepare(
-    "SELECT id, ticket, answers, status, created_at, arrived_at, served_at, channel, language, summary, flags, amount_cents, paid_at, pay_method, delete_status, (SELECT COUNT(*) FROM messages m WHERE m.checkin_id = checkins.id AND m.sender = 'customer' AND m.id > COALESCE(checkins.seen_business, 0)) AS unread FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY COALESCE(arrived_at, created_at)"
+    "SELECT id, ticket, answers, status, created_at, arrived_at, served_at, channel, language, summary, flags, amount_cents, paid_at, pay_method, deposit_cents, deposit_paid_at, delete_status, (SELECT COUNT(*) FROM messages m WHERE m.checkin_id = checkins.id AND m.sender = 'customer' AND m.id > COALESCE(checkins.seen_business, 0)) AS unread FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY COALESCE(arrived_at, created_at)"
   ).bind(params.id, start.getTime() - DAY).all();
   const audit = (await env.DB.prepare("SELECT action, detail, at FROM audit WHERE kiosk_id = ? ORDER BY at DESC LIMIT 30").bind(params.id).all()).results;
 
@@ -57,5 +58,6 @@ export async function onRequestGet({ params, request, env }) {
     .bind(params.id, Date.now() - 3 * 3600000).all()).results;
   const month = Date.now() - 30 * DAY;
   const counts = Object.fromEntries((await env.DB.prepare("SELECT type, COUNT(*) AS n FROM events WHERE kiosk_id = ? AND at > ? GROUP BY type").bind(params.id, month).all()).results.map((r) => [r.type, r.n]));
-  return Response.json({ config, checkins, audit, ease, feedback, alerts, inbox, funnel: { views: counts.view || 0, starts: counts.start || 0, checkins: counts.checkin || 0 } });
+  const goal = await goalFor(env, params.id, config);
+  return Response.json({ config, checkins, audit, ease, feedback, alerts, inbox, goal, funnel: { views: counts.view || 0, starts: counts.start || 0, checkins: counts.checkin || 0 } });
 }
