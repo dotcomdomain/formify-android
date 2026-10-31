@@ -131,7 +131,8 @@ function analytics(state, id, days, now) {
     hours.set(hour,(hours.get(hour)||0)+1);channels.set(v.channel,(channels.get(v.channel)||0)+1);
   }
   const feedback=visits.filter((v)=>v.score).sort((a,b)=>b.created_at-a.created_at);
-  const attention=visits.filter((v)=>v.unread||v.delete_status==="requested"||v.score&&v.score<=2||v.status==="ready"||v.status==="payment"&&!v.paid_at);
+  const attention=visits.filter((v)=>v.unread||v.delete_status==="requested"||v.score&&v.score<=2||v.status==="ready"||v.status==="payment"&&!v.paid_at)
+    .sort((a,b)=>Number(b.delete_status==="requested")-Number(a.delete_status==="requested")||(b.unread||0)-(a.unread||0)||a.created_at-b.created_at);
   const rows = { summary:[summarize(visits)], previous:[summarize(retained.filter((v)=>v.created_at>=w.previous_from&&v.created_at<w.previous_to))],
     customers:[{identified_customers:known.length,repeat_customers:repeat,single_visit_customers:known.length-repeat}],
     ratings:[{count:feedback.length,average:feedback.length?feedback.reduce((sum,v)=>sum+v.score,0)/feedback.length:null,low_scores:feedback.filter((v)=>v.score<=2).length}],

@@ -44,6 +44,7 @@ test("every navigation section has sample data and live metrics reconcile to vis
     assert.equal(d.hours.reduce((n,x)=>n+x.visits,0),d.summary.visits);
     assert.equal(d.channels.reduce((n,x)=>n+x.visits,0),d.summary.visits);
     assert.ok(d.summary.paid_cents>0);assert.ok(d.recommendations.length);
+    assert.equal(d.attention[0].delete_status,"requested");
     assert.ok(get(demo,`/api/kiosks/${l.id}/export?days=7`).csv.startsWith('"DEMO DATA ONLY"'));
   }
 });
