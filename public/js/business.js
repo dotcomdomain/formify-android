@@ -97,6 +97,7 @@ const noLocation = (title) => shell(title, `<h1>${title === "live" ? "Live" : "I
 
 // ---------- Live ----------
 const amounts = {};
+const prefilled = {};
 let seen = new Set(), first = true, reveal = "";
 function beep() {
   try { const a = new AudioContext(), o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; o.connect(g); g.connect(a.destination); g.gain.value = .15; o.start(); setTimeout(() => o.frequency.value = 660, 180); setTimeout(() => { o.stop(); a.close(); }, 420); } catch {}
@@ -113,7 +114,7 @@ async function renderLive() {
     <div id="queue"></div>`);
   first = true; seen = new Set();
   await loadLive();
-  poll = setInterval(() => { const a = document.activeElement?.dataset || {}; if (!reveal && !a.amt && !a.tin && !a.keepr) loadLive(); }, 4000);
+  poll = setInterval(() => { const a = document.activeElement?.dataset || {}; if (!reveal && !a.amt && !a.tin && !a.keepr && !a.apt && !a.apa) loadLive(); }, 4000);
 }
 async function loadLive() {
   let d;
@@ -144,7 +145,7 @@ async function loadLive() {
 
   const flow = d.config.flow || "walk_in";
   const order = { serving: 0, ready: 1, payment: 2, waiting: 3, pending: 4 };
-  const active = d.checkins.filter((c) => c.status in order || String(c.id) === reveal).sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4) || (a.arrived_at || a.created_at) - (b.arrived_at || b.created_at));
+  const active = d.checkins.filter((c) => c.status in order || String(c.id) === reveal).sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4) || a.line_at - b.line_at);
   const open = new Set([...document.querySelectorAll("details[open]")].map((x) => x.dataset.d));
   $("#queue").innerHTML = active.length ? active.map((c) => {
     const flags = (c.flags || []).map((f) => `<span class="flag${/now|urgent|chest|breath|bleed/i.test(f) ? " urgent" : ""}">${esc(f)}</span>`).join("");
@@ -152,10 +153,18 @@ async function loadLive() {
     const masked = Object.values(c.answers).includes("•••");
     // Add-ons the customer ticked pre-fill the cashier total.
     const addonCents = d.config.steps.flatMap((st) => st.fields).filter((f) => f.price_cents && c.answers[f.id] === true).reduce((a, f) => a + f.price_cents, 0);
-    if (addonCents && amounts[c.id] === undefined) amounts[c.id] = (addonCents / 100).toFixed(2);
+    // So do approved extras, added on top of anything already typed in.
+    const extraCents = addonCents + (c.approved_cents || 0);
+    if (extraCents !== (prefilled[c.id] || 0)) {
+      const typed = Math.round((parseFloat(amounts[c.id]) || 0) * 100);
+      amounts[c.id] = ((typed + extraCents - (prefilled[c.id] || 0)) / 100).toFixed(2);
+      prefilled[c.id] = extraCents;
+    }
     const badges = [c.deposit_cents ? `<span class="pill ${c.deposit_paid_at ? "ok" : ""}">deposit ${money(c.deposit_cents)} ${c.deposit_paid_at ? "paid" : "unpaid"}</span>` : "",
       d.goal.playbook === "faster_mornings" && !String(c.channel || "").startsWith("kiosk") ? '<span class="pill ok">express</span>' : "",
-      addonCents ? `<span class="pill">add-ons ${money(addonCents)}</span>` : ""].join(" ");
+      addonCents ? `<span class="pill">add-ons ${money(addonCents)}</span>` : "",
+      c.approvals_open ? '<span class="pill payment">waiting on approval</span>' : "",
+      c.approved_cents ? `<span class="pill ok">approved ${money(c.approved_cents)}</span>` : ""].join(" ");
     const acts = c.status === "waiting" ? `<button data-s="serving" data-id="${c.id}">Call ${esc(c.ticket)}</button>`
       : c.status === "serving" && flow === "dropoff" ? `<button data-s="ready" data-id="${c.id}">Ready for pickup</button>`
       : c.status === "serving" || c.status === "ready" ? `${c.status === "ready" ? '<span class="pill ok">ready for pickup</span>' : ""}<button data-s="done" data-id="${c.id}">Done</button><input data-amt="${c.id}" inputmode="decimal" placeholder="$ total" value="${esc(amounts[c.id] || "")}"><button class="btn-alt" data-pay="${c.id}">Send to cashier</button>`
@@ -187,16 +196,33 @@ const QUICK_REPLIES = ["Come on in, you're next", "Running about 10 minutes behi
 async function drawThread(id) {
   const boxes = root.querySelectorAll(`[data-thr="${id}"]`);
   if (!boxes.length) return;
-  let msgs;
-  try { msgs = (await api(`/api/checkins/${id}/messages`)).messages; } catch { return; }
+  let msgs, approvals;
+  try { ({ messages: msgs, approvals } = await api(`/api/checkins/${id}/messages`)); } catch { return; }
+  const ap = apDrafts[id] || {};
+  const open = approvals.some((a) => a.status === "pending");
   const html = `<div class="tml">${msgs.map((m) => {
     const t = time(m.at);
+    if (m.kind === "approval") {
+      const a = approvals.find((x) => x.message_id === m.id);
+      const state = !a || a.status === "pending" ? ["payment", "waiting"] : a.status === "approved" ? ["ok", "approved"] : ["", "declined"];
+      return `<div class="tm receipt"><span class="pill ${state[0]}">${state[1]}</span> ${esc(a?.title || m.body)}${a?.amount_cents ? ` · ${money(a.amount_cents)}` : ""} · ${t}</div>`;
+    }
     if (m.sender === "system") return `<div class="tm ${m.kind === "receipt" ? "receipt" : "system"}">${esc(m.body)} · ${t}</div>`;
     return `<div class="tm ${m.sender}">${m.sender === "business" ? `<span class="small" style="opacity:.75">${esc(m.author || "Staff")}: </span>` : ""}${esc(m.body)} <span class="small" style="opacity:.6">${t}</span></div>`;
   }).join("") || '<div class="tm system">No messages yet.</div>'}</div>
     <div class="quick">${QUICK_REPLIES.map((q) => `<button data-qr="${id}" data-text="${esc(q)}">${esc(q)}</button>`).join("")}</div>
-    <div class="send"><input data-tin="${id}" placeholder="Reply to the customer" value="${esc(drafts[id] || "")}"><button data-tsend="${id}">Send</button></div>`;
+    <div class="send"><input data-tin="${id}" placeholder="Reply to the customer" value="${esc(drafts[id] || "")}"><button data-tsend="${id}">Send</button></div>
+    <div class="send"><input data-apt="${id}" placeholder="Ask to approve, e.g. New brake cable" maxlength="140" value="${esc(ap.title || "")}"><input data-apa="${id}" inputmode="decimal" placeholder="$" aria-label="Amount" style="flex:0 0 72px" value="${esc(ap.amount || "")}"><button class="btn-alt" data-apsend="${id}" ${open ? "disabled" : ""}>${open ? "Waiting" : "Ask"}</button></div>`;
   boxes.forEach((b) => { b.innerHTML = html; });
+}
+const apDrafts = {};
+async function askApproval(id) {
+  const { title, amount } = apDrafts[id] || {};
+  const dollars = String(amount || "").replace(/[^0-9.]/g, "");
+  await api(`/api/checkins/${id}/approvals`, { method: "POST", body: { title, amount: dollars } });
+  delete apDrafts[id];
+  toast("Sent to the customer.");
+  await loadLive();
 }
 async function sendReply(id, body) {
   if (!String(body || "").trim()) return;
@@ -220,6 +246,9 @@ root.addEventListener("click", async (e) => {
     }
     if (b.dataset.qr) return sendReply(b.dataset.qr, b.dataset.text);
     if (b.dataset.tsend) return sendReply(b.dataset.tsend, root.querySelector(`[data-tin="${b.dataset.tsend}"]`)?.value);
+    if (b.dataset.apsend) return await askApproval(b.dataset.apsend);
+    if (b.dataset.invsend) return await sendInvite(b.dataset.invsend);
+    if (b.dataset.copy) { await navigator.clipboard.writeText(b.dataset.copy); return toast(b.dataset.copied); }
     if (b.dataset.ddel) {
       if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap to confirm delete"; return; }
       await api(`/api/checkins/${b.dataset.ddel}/data`, { method: "POST", body: { action: "delete" } }); toast("Their info was deleted and they were told."); return loadLive();
@@ -237,7 +266,7 @@ root.addEventListener("click", async (e) => {
     if (b.dataset.s) { await api(`/api/checkins/${b.dataset.id}`, { method: "PATCH", body: { status: b.dataset.s, paid: b.dataset.paid } }); return loadLive(); }
   } catch (err) { toast(err.message); }
 });
-root.addEventListener("input", (e) => { if (e.target.dataset.amt) amounts[e.target.dataset.amt] = e.target.value; if (e.target.dataset.tin) drafts[e.target.dataset.tin] = e.target.value; });
+root.addEventListener("input", (e) => { if (e.target.dataset.amt) amounts[e.target.dataset.amt] = e.target.value; if (e.target.dataset.tin) drafts[e.target.dataset.tin] = e.target.value; const { apt, apa } = e.target.dataset; if (apt) (apDrafts[apt] ||= {}).title = e.target.value; if (apa) (apDrafts[apa] ||= {}).amount = e.target.value; });
 root.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.dataset.tin) { e.preventDefault(); sendReply(e.target.dataset.tin, e.target.value); } });
 
 // ---------- Forms ----------
@@ -247,7 +276,11 @@ function renderForms() {
     <div class="cards" style="margin-top:22px">${me.locations.map((l) => `<div class="loccard" style="--b:${esc(l.brand_color)}">
       <h3>${esc(l.name)}</h3><div class="muted small" style="text-transform:capitalize">${esc(l.business_type)}${l.city ? ` · ${esc(l.city)}` : ""} · Ease ${l.ease.avg ?? "–"}</div>
       <div class="links"><a href="#forms/${l.id}">Edit form</a><a href="/kiosk.html?id=${l.id}" target="_blank">Kiosk</a><a href="/go.html?id=${l.id}" target="_blank">Phone link</a><a href="/now.html?id=${l.id}" target="_blank">Now serving screen</a><a href="${me.business.slug ? `/p/${me.business.slug}` : `/#b/${l.id}`}" target="_blank">Public page</a><button data-qr="${l.id}">QR code</button></div>
-      <div data-qrbox="${l.id}" style="margin-top:12px"></div></div>`).join("") || '<div class="empty panel" style="grid-column:1/-1"><b>No forms yet</b>Create one in a sentence.</div>'}</div>`);
+      <div class="links"><button data-copy="${esc(`${location.origin}/go.html?id=${l.id}`)}" data-copied="Link copied. Add it to Linktree, a bio or an email.">Copy form link</button><button data-copy="${esc(`<iframe src="${location.origin}/go.html?id=${l.id}" title="${l.name}" width="100%" height="760" style="border:0"></iframe>`)}" data-copied="Embed code copied. Paste it into a WordPress Custom HTML block.">Copy website embed</button></div>
+      <div data-qrbox="${l.id}" style="margin-top:12px"></div>
+      <div class="bthread"><div class="send"><input type="email" data-invmail="${l.id}" placeholder="Their email" aria-label="Email to invite"><button data-invsend="${l.id}">Invite</button></div>
+        <input data-invname="${l.id}" placeholder="Their name (optional)" aria-label="Their name" style="width:100%;margin-top:6px;padding:8px 10px"><div class="small muted" data-invlist="${l.id}" style="margin-top:8px"></div></div></div>`).join("") || '<div class="empty panel" style="grid-column:1/-1"><b>No forms yet</b>Create one in a sentence.</div>'}</div>`);
+  me.locations.forEach((l) => drawInvites(l.id));
   root.querySelectorAll("[data-qr]").forEach((b) => b.onclick = () => {
     const box = root.querySelector(`[data-qrbox="${b.dataset.qr}"]`);
     if (box.childElementCount) { box.innerHTML = ""; return; }
@@ -255,7 +288,28 @@ function renderForms() {
   });
 }
 
+// Email invites: a personal form link per customer, with whether they've opened it.
+const INVITE_STATUS = { created: "drafted", sent: "sent", opened: "opened" };
+async function drawInvites(id) {
+  const box = root.querySelector(`[data-invlist="${id}"]`);
+  if (!box) return;
+  try {
+    const { invites } = await api(`/api/kiosks/${id}/invites`);
+    box.innerHTML = invites.map((i) => `<div>${esc(i.name || i.email)} · <b>${INVITE_STATUS[i.status]}</b></div>`).join("");
+  } catch { box.textContent = ""; }
+}
+async function sendInvite(id) {
+  const email = root.querySelector(`[data-invmail="${id}"]`);
+  const name = root.querySelector(`[data-invname="${id}"]`);
+  const r = await api(`/api/kiosks/${id}/invites`, { method: "POST", body: { email: email.value, name: name.value } });
+  email.value = ""; name.value = "";
+  // Until email sending is connected, the invite opens as a ready-made draft in the owner's own mail app.
+  if (r.mailto) { location.href = r.mailto; toast("Invite ready in your email app."); } else toast("Invite sent.");
+  await drawInvites(id);
+}
+
 const TYPES = ["text", "tel", "email", "date", "number", "select", "checkbox", "textarea"];
+const TYPE_LABEL = { text: "Short answer", tel: "Phone", email: "Email", date: "Date", number: "Number", select: "Choice", checkbox: "Checkbox", textarea: "Long answer" };
 let draft = null, source = "";
 async function renderBuilder(id) {
   draft = null; source = "";
@@ -263,10 +317,10 @@ async function renderBuilder(id) {
     <h1>${id ? "Edit form" : "New form"}</h1>
     ${id ? "" : `<div class="panel" style="margin:16px 0 22px">
       <p class="small" style="margin:0 0 6px;font-weight:700;color:var(--clay)">Fortify your business with Formify</p>
-      <h2 style="font-size:28px">Describe your front desk in a sentence</h2>
-      <p class="muted">Who checks in, and what you need to know before you serve them. The AI drafts the form; you approve it.</p>
-      <textarea id="prompt" rows="3" placeholder="Barbershop in Hamilton. Walk-ins pick a service and a barber, and we text them when their chair is ready."></textarea>
-      <div class="chiprow" style="margin:12px 0">${[["Clinic", "Family clinic in Hamilton. Patients check in with their health card and date of birth, pick walk-in or booked appointment, and say why they're visiting."], ["Barber", "Barbershop. Walk-ins pick a service (haircut, fade, beard trim) and a preferred barber, and leave a phone number for a text."], ["Ski rental", "Ski and snowboard rental shop. Renters give height, weight, boot size, skier type and package, add a helmet, and accept the waiver."], ["Restaurant", "Busy noodle restaurant. Guests join the waitlist with party size and a phone number, and can pre-order a starter."]]
+      <h2 style="font-size:28px">Describe your business in a sentence</h2>
+      <p class="muted">Say who fills it in and what you need to know. AI drafts the form, and you approve it.</p>
+      <textarea id="prompt" rows="3" placeholder="Independent auto repair shop in Hamilton. Customers drop off cars for brakes and diagnostics."></textarea>
+      <div class="chiprow" style="margin:12px 0">${[["Auto repair", "Independent auto repair shop in Hamilton. Customers drop off cars for brakes, oil changes and diagnostics."], ["Adventure park waiver", "Treetop adventure park waiver for visitors, with emergency contact and medical notes."], ["Event registration", "Event registration for a charity gala with guests and dietary needs."], ["Motel check-in", "Small motel guest check-in before arrival."], ["Clinic intake", "New patient intake for a physiotherapy clinic."], ["Staff onboarding", "Staff onboarding form for new hires at my shop. I need their contact details, start date, role and emergency contact."]]
         .map(([l, t]) => `<button type="button" data-ex="${esc(t)}">${l}</button>`).join("")}</div>
       <div class="row"><button id="gen" class="btn-big">Draft my form</button><span class="muted small" id="gstat"></span></div></div>`}
     <div id="editor" class="grid2" ${id ? "" : "hidden"} style="gap:22px"></div>`);
@@ -286,36 +340,59 @@ function openEditor(id) {
   const ed = $("#editor");
   ed.hidden = false;
   const f = (k, label, attrs = "") => `<div><label>${label}</label><input data-k="${k}" ${attrs}></div>`;
-  ed.innerHTML = `<div class="panel">
-      <h2 style="font-size:24px">Review before it goes live</h2>
-      <p class="muted small">Sensitive fields are hidden from staff until revealed, and every reveal is logged.</p>
-      <div class="step-title">What's your goal?</div>
-      <div class="pbgrid" id="pbgrid"></div>
-      <div id="levers"></div>
-      <div class="grid2" style="gap:12px">${f("name", "Business name")}${f("brand_color", "Brand colour", 'type="color" style="height:44px;padding:4px"')}</div>
-      <label>Welcome title</label><input data-k="welcome_title">
-      <label>Consent text visitors agree to</label><textarea data-k="consent_text" rows="2"></textarea>
-      <div class="grid2" style="gap:12px">${f("retention_days", "Delete data after (days)", 'type="number" min="1" max="365"')}${f("avg_service_minutes", "Minutes per visitor", 'type="number" min="1" max="120"')}</div>
-      <label for="flowsel">How do customers come in? <span class="muted small">(set by your goal; change it if you need to)</span></label>
-      <select data-k="flow" id="flowsel">
-        <option value="walk_in">Walk in and wait in line</option>
-        <option value="appointment">Book ahead, then check in on arrival</option>
-        <option value="dropoff">Drop off, pick up when it's ready</option>
-        <option value="forms_only">Forms only (waivers, sign-ups), no line</option>
-      </select>
-      <p class="muted small" style="margin:4px 0 0">Formify adapts the customer's updates and your front desk to this. Keep using your booking or POS system; connect it in Settings.</p>
-      <div id="fields"></div>
-      <div class="step-title">Public page</div>
-      <div class="grid2" style="gap:12px">${f("city", "City", 'placeholder="Hamilton, ON"')}${f("instagram", "Instagram", 'placeholder="@yourbusiness"')}${f("google_reviews", "Google reviews link")}${f("website", "Website")}</div>
-      <label class="check" style="font-weight:500"><input type="checkbox" data-k="listed" style="width:auto"> List in the Formify search</label>
-      <div class="row" style="margin-top:18px"><button id="save" class="btn-big">${id ? "Save changes" : "Approve and publish"}</button><span class="muted small" id="sstat"></span></div>
+  ed.classList.add("bldgrid");
+  ed.classList.remove("grid2");
+  ed.innerHTML = `<div class="bldmain">
+      <div class="bldhead"><div><h2>${id ? "Edit your form" : "Your form is ready"}</h2><p class="muted">Check the questions, try the preview, then publish.</p></div>
+        <div class="bldact"><button id="save" class="btn-big">${id ? "Save changes" : "Publish form"}</button><span class="muted small" id="sstat"></span></div></div>
+      <div class="panel bldform">
+        <input class="bldtitle" data-k="welcome_title" aria-label="Form title">
+        <input class="bldsub" data-k="welcome_subtitle" aria-label="Form description">
+        <div id="fields"></div>
+        <button type="button" class="btn-alt" id="addq">Add a question</button>
+      </div>
+      <details class="bldsec"><summary>Goal and flow</summary>
+        <div class="pbgrid" id="pbgrid"></div>
+        <div id="levers"></div>
+        <label for="flowsel">How do customers come in?</label>
+        <select data-k="flow" id="flowsel">
+          <option value="walk_in">Walk in and wait in line</option>
+          <option value="appointment">Book ahead, then check in on arrival</option>
+          <option value="dropoff">Drop off, pick up when it's ready</option>
+          <option value="forms_only">Forms only (waivers, sign-ups), no line</option>
+        </select>
+      </details>
+      <details class="bldsec"><summary>Privacy and consent</summary>
+        <label>Consent text customers agree to</label><textarea data-k="consent_text" rows="3"></textarea>
+        <div class="grid2" style="gap:12px">${f("retention_days", "Delete data after (days)", 'type="number" min="1" max="365"')}${f("avg_service_minutes", "Minutes per customer", 'type="number" min="1" max="120"')}</div>
+        <p class="muted small">Private answers stay hidden from staff until revealed, and every reveal is logged.</p>
+      </details>
+      <details class="bldsec"><summary>Business details</summary>
+        <div class="grid2" style="gap:12px">${f("name", "Business name")}${f("brand_color", "Brand colour", 'type="color" style="height:44px;padding:4px"')}${f("city", "City", 'placeholder="Hamilton, ON"')}${f("instagram", "Instagram", 'placeholder="@yourbusiness"')}${f("google_reviews", "Google reviews link")}${f("website", "Website")}</div>
+        <label class="check" style="font-weight:500"><input type="checkbox" data-k="listed" style="width:auto"> Show in Formify search</label>
+      </details>
     </div>
-    <div><div class="row" style="justify-content:space-between;margin-bottom:8px"><strong>Live preview</strong><span class="muted small">Try it, including the assistant</span></div>
-      <div id="preview" class="panel" style="padding:0;overflow:hidden"></div></div>`;
+    <aside class="bldside"><div class="row" style="justify-content:space-between;margin-bottom:10px"><strong>Live preview</strong><span class="muted small">Try it like a customer</span></div>
+      <div class="bldphone"><div id="preview"></div></div></aside>`;
   fill(); drawPlaybooks(); preview();
   ed.addEventListener("input", onEdit);
   ed.addEventListener("click", onLeverClick);
-  ed.addEventListener("change", (e) => { if (e.target.type === "checkbox" || e.target.tagName === "SELECT") preview(); });
+  ed.addEventListener("change", (e) => {
+    const type = e.target.dataset.f?.endsWith(".type");
+    if (type) {
+      const [si, fi] = e.target.dataset.f.split(".").map(Number);
+      const q = draft.steps[si].fields[fi];
+      if (q.type === "select" && !q.options?.length) q.options = ["Option 1", "Option 2"];
+      fill();
+    }
+    if (e.target.type === "checkbox" || e.target.tagName === "SELECT") preview();
+  });
+  $("#addq").addEventListener("click", () => {
+    if (!draft.steps.length) draft.steps.push({ title: "Your details", fields: [] });
+    draft.steps.at(-1).fields.push({ id: `q_${Date.now()}`, label: "New question", type: "text", required: false, sensitive: false });
+    fill(); preview();
+    [...root.querySelectorAll(".bldqlabel")].at(-1)?.select();
+  });
   $("#fields").addEventListener("click", (e) => {
     const rm = e.target.closest("[data-rm]")?.dataset.rm;
     if (!rm) return;
@@ -336,15 +413,21 @@ function openEditor(id) {
 }
 function fill() {
   document.querySelectorAll("#editor [data-k]").forEach((el) => { if (el.type === "checkbox") el.checked = draft[el.dataset.k] !== false; else el.value = draft[el.dataset.k] ?? ""; });
-  $("#fields").innerHTML = draft.steps.map((s, si) => `<div class="step-title">Step ${si + 1}: <input data-st="${si}" value="${esc(s.title)}" style="display:inline;width:auto;padding:5px 8px"></div>
-    ${s.fields.map((f, fi) => `<div class="field-row"><input data-f="${si}.${fi}.label" value="${esc(f.label)}">
-      <select data-f="${si}.${fi}.type">${TYPES.map((t) => `<option${t === f.type ? " selected" : ""}>${t}</option>`).join("")}</select>
-      <span class="row small" style="gap:10px"><label class="small" style="margin:0;font-weight:500"><input type="checkbox" data-f="${si}.${fi}.required" ${f.required ? "checked" : ""} style="width:auto"> required</label>
-      <label class="small" style="margin:0;font-weight:500"><input type="checkbox" data-f="${si}.${fi}.sensitive" ${f.sensitive ? "checked" : ""} style="width:auto"> <span class="pill sens">sensitive</span></label></span>
-      <button class="x" data-rm="${si}.${fi}" title="Remove field" aria-label="Remove ${esc(f.label)}">&times;</button></div>`).join("")}`).join("");
+  $("#fields").innerHTML = draft.steps.map((s, si) => `<input class="bldstep" data-st="${si}" value="${esc(s.title)}" aria-label="Section title">
+    ${s.fields.map((f, fi) => `<div class="bldq"><div class="bldqrow"><input class="bldqlabel" data-f="${si}.${fi}.label" value="${esc(f.label)}" aria-label="Question">
+      <select data-f="${si}.${fi}.type" aria-label="Answer type">${TYPES.map((t) => `<option value="${t}"${t === f.type ? " selected" : ""}>${TYPE_LABEL[t]}</option>`).join("")}</select>
+      <button class="x" data-rm="${si}.${fi}" title="Remove question" aria-label="Remove ${esc(f.label)}">&times;</button></div>
+      ${f.type === "select" ? `<input class="bldopts" data-fo="${si}.${fi}" value="${esc((f.options || []).join(", "))}" placeholder="Choices, separated by commas" aria-label="Choices">` : ""}
+      <div class="bldflags"><label><input type="checkbox" data-f="${si}.${fi}.required" ${f.required ? "checked" : ""}> Required</label>
+      <label><input type="checkbox" data-f="${si}.${fi}.sensitive" ${f.sensitive ? "checked" : ""}> Private</label></div></div>`).join("")}`).join("");
 }
 function onEdit(e) {
   const el = e.target;
+  if (el.dataset.fo) {
+    const [si, fi] = el.dataset.fo.split(".").map(Number);
+    draft.steps[si].fields[fi].options = el.value.split(",").map((o) => o.trim()).filter(Boolean);
+    return preview();
+  }
   if (el.dataset.k) draft[el.dataset.k] = el.type === "number" ? +el.value : el.type === "checkbox" ? el.checked : el.value;
   if (el.dataset.st) draft.steps[+el.dataset.st].title = el.value;
   if (el.dataset.f) {

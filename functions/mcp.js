@@ -4,6 +4,9 @@
 import { searchBusinesses } from "../lib/search.js";
 import { loadConfig, position } from "../lib/queue.js";
 import { createCheckin } from "../lib/checkin.js";
+import { overLimit } from "../lib/limit.js";
+
+const TEN_MINUTES = 600;
 
 const PROTOCOL = "2025-06-18";
 
@@ -44,7 +47,7 @@ const TOOLS = [
 
 const text = (obj, isError = false) => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }], ...(isError ? { isError: true } : {}) });
 
-async function callTool(name, args, env, waitUntil, origin) {
+async function callTool(name, args, env, waitUntil, origin, request) {
   if (name === "search_businesses") {
     const list = await searchBusinesses(env, args.query || "", args.type || "");
     if (!list.length) return text(`No businesses on Formify match "${args.query}".`);
@@ -64,6 +67,7 @@ async function callTool(name, args, env, waitUntil, origin) {
   }
   if (name === "check_in") {
     if (args.user_confirmed !== true) return text("Not checked in. Show the person the consent text and their answers, and get their explicit yes first.", true);
+    if (await overLimit(env, request, "mcp:check_in", 10, TEN_MINUTES)) return text("Not checked in: too many check-ins from here. Try again in a few minutes.", true);
     const id = String(args.business_id || "");
     const config = await loadConfig(env, id);
     if (!config) return text("Business not found.", true);
@@ -72,13 +76,14 @@ async function callTool(name, args, env, waitUntil, origin) {
     return text({
       checked_in: true, business: config.name, ticket: r.ticket, arrival_code: r.code,
       status_url: `${origin}/visit.html#${r.token}`,
+      ...(r.holds_place ? { place_saved: true, ahead: r.ahead, wait_minutes: r.wait_minutes } : {}),
       next_step: "Tell the person their ticket and arrival code. When they arrive they enter the code at the kiosk or tap \"I'm here\" on the status page."
     });
   }
   if (name === "get_visit_status") {
     const token = String(args.status_url || "").split("#").pop();
     if (!/^[0-9a-f]{32}$/.test(token)) return text("That status link isn't valid.", true);
-    const row = await env.DB.prepare("SELECT kiosk_id, ticket, status, arrived_at, amount_cents FROM checkins WHERE token = ?").bind(token).first();
+    const row = await env.DB.prepare("SELECT kiosk_id, ticket, status, line_at, amount_cents FROM checkins WHERE token = ?").bind(token).first();
     if (!row) return text("Visit not found.", true);
     const config = await loadConfig(env, row.kiosk_id);
     return text({ business: config.name, ticket: row.ticket, status: row.status, ...(await position(env, row.kiosk_id, row, config)), ...(row.amount_cents ? { amount_due: (row.amount_cents / 100).toFixed(2) } : {}) });
@@ -86,7 +91,7 @@ async function callTool(name, args, env, waitUntil, origin) {
   return null;
 }
 
-async function handle(msg, env, waitUntil, origin) {
+async function handle(msg, env, waitUntil, origin, request) {
   const { id, method, params = {} } = msg || {};
   const reply = (result) => ({ jsonrpc: "2.0", id, result });
   const fail = (code, message) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
@@ -103,7 +108,7 @@ async function handle(msg, env, waitUntil, origin) {
   if (method === "tools/list") return reply({ tools: TOOLS });
   if (method === "tools/call") {
     try {
-      const out = await callTool(params.name, params.arguments || {}, env, waitUntil, origin);
+      const out = await callTool(params.name, params.arguments || {}, env, waitUntil, origin, request);
       return out ? reply(out) : fail(-32602, `Unknown tool: ${params.name}`);
     } catch (e) {
       return reply(text(`Tool failed: ${String(e.message || e).slice(0, 200)}`, true));
@@ -114,10 +119,11 @@ async function handle(msg, env, waitUntil, origin) {
 
 export async function onRequestPost({ request, env, waitUntil }) {
   const origin = new URL(request.url).origin;
+  if (await overLimit(env, request, "mcp", 120, TEN_MINUTES)) return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Too many requests. Try again in a few minutes." } }, { status: 429, headers: { "retry-after": String(TEN_MINUTES) } });
   let body;
   try { body = await request.json(); } catch { return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400 }); }
   const batch = Array.isArray(body);
-  const results = (await Promise.all((batch ? body : [body]).map((m) => handle(m, env, waitUntil, origin)))).filter(Boolean);
+  const results = (await Promise.all((batch ? body : [body]).map((m) => handle(m, env, waitUntil, origin, request)))).filter(Boolean);
   if (!results.length) return new Response(null, { status: 202 });
   return Response.json(batch ? results : results[0], { headers: { "cache-control": "no-store" } });
 }

@@ -9,7 +9,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Check in</title>
-<script>try{var q=new URLSearchParams(location.search).get("theme");if(q==="blue"||q==="warm")localStorage.setItem("fz_theme",q);if((q||localStorage.getItem("fz_theme"))==="blue")document.documentElement.dataset.theme="blue"}catch(e){}</script>
+<script>try{var q=new URLSearchParams(location.search).get("theme");if(q==="blue"||q==="warm")localStorage.setItem("fz_theme",q);if((q||localStorage.getItem("fz_theme")||"blue")==="blue")document.documentElement.dataset.theme="blue"}catch(e){}</script>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/formify.css">
 </head>

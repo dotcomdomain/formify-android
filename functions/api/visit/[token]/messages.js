@@ -1,4 +1,5 @@
 import { addMessage, messagesFor } from "../../../../lib/thread.js";
+import { approvalsFor } from "../../../../lib/approvals.js";
 
 // Customer side of the visit thread. The visit token is the key; no account needed.
 async function load(env, token) {
@@ -11,7 +12,7 @@ export async function onRequestGet({ params, env }) {
   if (!row) return Response.json({ error: "Visit not found" }, { status: 404 });
   const messages = await messagesFor(env, row.id);
   if (messages.length) await env.DB.prepare("UPDATE checkins SET seen_customer = ? WHERE id = ?").bind(messages.at(-1).id, row.id).run();
-  return Response.json({ messages });
+  return Response.json({ messages, approvals: await approvalsFor(env, row.id) });
 }
 
 export async function onRequestPost({ params, request, env, waitUntil }) {

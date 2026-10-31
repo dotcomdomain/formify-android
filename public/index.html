@@ -10,18 +10,18 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Formify</title>
-<script>try{var q=new URLSearchParams(location.search).get("theme");if(q==="blue"||q==="warm")localStorage.setItem("fz_theme",q);if((q||localStorage.getItem("fz_theme"))==="blue")document.documentElement.dataset.theme="blue"}catch(e){}</script>
+<script>try{var q=new URLSearchParams(location.search).get("theme");if(q==="blue"||q==="warm")localStorage.setItem("fz_theme",q);if((q||localStorage.getItem("fz_theme")||"blue")==="blue")document.documentElement.dataset.theme="blue"}catch(e){}</script>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/formify.css">
 </head>
 <body class="app">
 <div class="shell">
   <header class="topbar">
-    <a class="brand" href="#search"><span class="mark">Form<i>ify</i></span><span class="tag">Skip the line, everywhere</span></a>
+    <a class="brand" href="#search"><span class="mark">Form<i>ify</i></span><span class="tag">Your forms and visits</span></a>
     <nav class="tabs" id="tabs" aria-label="Sections">
       <button data-tab="search">Search</button>
-      <button data-tab="assistant">Assistant</button>
       <button data-tab="visits">Visits<span class="tabdot" id="unreadDot" hidden></span></button>
+      <button data-tab="assistant">Assistant</button>
       <button data-tab="you">You</button>
     </nav>
     <div class="right"><button class="theme-dot" id="themeBtn" title="Switch theme" aria-label="Switch colour theme"></button><a class="biz-link" href="/business.html">For businesses</a></div>

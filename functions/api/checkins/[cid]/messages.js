@@ -1,5 +1,6 @@
 import { ownsKiosk, json } from "../../../../lib/auth.js";
 import { addMessage, messagesFor } from "../../../../lib/thread.js";
+import { approvalsFor } from "../../../../lib/approvals.js";
 
 // Business side of the visit thread. Any staff role can read and reply.
 async function guard(env, request, cid) {
@@ -13,7 +14,7 @@ export async function onRequestGet({ params, request, env }) {
   if (!g) return json({ error: "Not your location." }, 403);
   const messages = await messagesFor(env, g.row.id);
   if (messages.length) await env.DB.prepare("UPDATE checkins SET seen_business = ? WHERE id = ?").bind(messages.at(-1).id, g.row.id).run();
-  return json({ messages });
+  return json({ messages, approvals: await approvalsFor(env, g.row.id) });
 }
 
 export async function onRequestPost({ params, request, env, waitUntil }) {

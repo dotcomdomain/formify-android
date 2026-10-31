@@ -63,7 +63,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   let s;
   const fresh = () => ({ screen: startAt, step: 0, answers: { ...initialAnswers }, consent: false, result: null, error: "", busy: "", note: "", reply: "", language: "en", via: new Set(), remember: true, recording: false, chat: [], thinking: false, draft: "", lastVoice: false, urgent: false });
   s = fresh();
-  let idle, rec, recTimer;
+  let idle, rec, recTimer, caption;
   root.classList.add("kiosk");
   if (phone) root.classList.add("phone");
   root.style.setProperty("--brand", config.brand_color);
@@ -223,15 +223,16 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     draw();
   }
   async function chatAudio(blob) {
-    s.thinking = true; draw();
-    try {
-      const r = await post("/api/stt", { audio: await toBase64(blob) });
-      s.thinking = false;
-      if (!r.text) { s.chat.push({ role: "assistant", content: "Sorry, I didn't catch that. Tap Talk and try again." }); return draw(); }
-      s.language = r.language || s.language;
-      s.via.add("voice");
-      await chatSend(r.text, { voice: true });
-    } catch (e) { s.thinking = false; s.error = e.message; draw(); }
+    const heard = s.caption;
+    s.caption = ""; s.thinking = true; draw();
+    let r = {};
+    try { r = await post("/api/stt", { audio: await toBase64(blob) }); } catch (e) { if (!heard) { s.thinking = false; s.error = e.message; return draw(); } }
+    s.thinking = false;
+    const text = r.text || heard;
+    if (!text) { s.chat.push({ role: "assistant", content: "Sorry, I didn't catch that. Tap Talk and try again." }); return draw(); }
+    s.language = r.language || s.language;
+    s.via.add("voice");
+    await chatSend(text, { voice: true });
   }
 
   async function submit() {
@@ -254,6 +255,24 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     draw();
   }
 
+  // Live captions while talking, where the browser offers speech recognition. Whisper still writes the final text.
+  function startCaption() {
+    s.caption = "";
+    const Recognizer = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognizer || s.screen !== "chat") return;
+    caption = new Recognizer();
+    caption.continuous = true;
+    caption.interimResults = true;
+    caption.lang = navigator.language || "en-US";
+    caption.onresult = (e) => {
+      s.caption = [...e.results].map((x) => x[0].transcript).join(" ").replace(/\s+/g, " ").trim();
+      const input = root.querySelector("#msg");
+      if (input) { input.value = s.caption; input.scrollLeft = input.scrollWidth; }
+    };
+    caption.onerror = () => {};
+    try { caption.start(); } catch { caption = null; }
+  }
+
   // Voice: tap to start, tap to stop (auto-stops after 20 s).
   async function startRec() {
     try {
@@ -270,11 +289,14 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       rec.start();
       s.recording = true; s.error = ""; s.reply = "Listening... tell me everything in one go, then tap Stop.";
       draw();
+      startCaption();
       recTimer = setTimeout(() => stopRec(), 20000);
     } catch { s.error = "Microphone not available. You can type instead."; draw(); }
   }
   function stopRec(cancel) {
     clearTimeout(recTimer);
+    caption?.abort();
+    caption = null;
     if (rec && rec.state !== "inactive") { rec.cancelled = !!cancel; rec.stop(); }
     s.recording = false;
   }

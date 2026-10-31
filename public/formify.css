@@ -268,3 +268,35 @@ body.app::before {
 .pbgrid .pb.on { border-color: var(--forest); background: rgba(46,107,82,.08); box-shadow: inset 0 0 0 1px var(--forest); }
 .levers { background: var(--cream); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; }
 .levers .check { font-weight: 500; font-size: 15px; margin: 6px 0; }
+
+/* Form builder */
+.bldgrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 400px); gap: 28px; align-items: start; }
+@media (max-width: 980px) { .bldgrid { grid-template-columns: 1fr; } }
+.bldhead { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.bldhead h2 { font-size: 28px; margin: 0; }
+.bldhead p { margin: 2px 0 0; }
+.bldact { display: flex; align-items: center; gap: 10px; }
+.bldform { padding: 26px; }
+.bldtitle, .bldsub, .bldstep { width: 100%; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 4px 0; transition: border-color .15s ease; }
+.bldtitle { font-family: var(--serif); font-size: 30px; color: var(--ink); }
+.bldsub { font-size: 16px; color: var(--muted); margin-bottom: 8px; }
+.bldstep { margin-top: 20px; font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--forest-2, var(--forest)); }
+.bldtitle:hover, .bldsub:hover, .bldstep:hover, .bldtitle:focus, .bldsub:focus, .bldstep:focus { border-bottom-color: var(--line); outline: none; }
+.bldq { margin-top: 10px; padding: 14px; background: var(--cream); border: 1px solid transparent; border-radius: 14px; transition: border-color .15s ease, box-shadow .15s ease; }
+.bldq:hover, .bldq:focus-within { border-color: var(--forest); box-shadow: var(--shadow); }
+.bldqrow { display: grid; grid-template-columns: minmax(0, 1fr) 150px 34px; gap: 8px; align-items: center; }
+.bldqlabel { font-weight: 650; }
+.bldopts { width: 100%; margin-top: 8px; font-size: 14px; }
+.bldq .x { background: transparent; color: var(--muted); padding: 6px; }
+.bldq .x:hover { color: var(--ink); }
+.bldflags { display: flex; gap: 16px; margin-top: 8px; font-size: 13.5px; color: var(--muted); }
+.bldflags label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 500; }
+.bldflags input { width: auto; }
+#addq { margin-top: 14px; }
+.bldsec { margin-top: 12px; padding: 4px 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; transition: border-color .15s ease; }
+.bldsec:hover { border-color: var(--forest); }
+.bldsec[open] { padding-bottom: 18px; }
+.bldsec summary { padding: 14px 0; font-weight: 700; cursor: pointer; }
+.bldside { position: sticky; top: 20px; }
+.bldphone { border: 10px solid var(--forest-ink, #0a1736); border-radius: 34px; overflow: hidden; background: var(--paper); box-shadow: var(--shadow); max-height: 720px; min-height: 620px; overflow-y: auto; }
+.bldphone #preview { padding: 22px 18px; }

@@ -1,6 +1,6 @@
 // Colour theme (warm or blue), remembered per device. Pages also set it inline in <head> to avoid a flash.
 const KEY = "fz_theme";
-export const theme = () => { try { return localStorage.getItem(KEY) === "blue" ? "blue" : "warm"; } catch { return "warm"; } };
+export const theme = () => { try { return localStorage.getItem(KEY) === "warm" ? "warm" : "blue"; } catch { return "blue"; } };
 export function setTheme(t) {
   const v = t === "blue" ? "blue" : "warm";
   try { localStorage.setItem(KEY, v); } catch {}

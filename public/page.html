@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Formify</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400..800&family=Young+Serif&display=swap" rel="stylesheet">
+<style>
+  :root { --b: #1e40af; --on: #fff; --ink: #0f1b33; --muted: #56637d; --line: #dbe3ef; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; color: var(--ink); font-family: "Bricolage Grotesque", system-ui, sans-serif; background: radial-gradient(760px 420px at 50% -80px, color-mix(in srgb, var(--b) 30%, transparent), transparent 72%), #f6f8fc; }
+  main { max-width: 500px; margin: 0 auto; padding: 44px 18px 32px; text-align: center; }
+  .logo { width: 88px; height: 88px; margin: 0 auto 16px; display: grid; place-items: center; border-radius: 50%; background: var(--b); color: var(--on); font: 400 40px "Young Serif", Georgia, serif; box-shadow: 0 14px 34px -12px var(--b); }
+  h1 { margin: 0; font: 400 clamp(30px, 8vw, 38px)/1.1 "Young Serif", Georgia, serif; }
+  .tag { margin: 8px 0 0; font-size: 17px; line-height: 1.4; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; font-size: 14px; color: var(--muted); }
+  .chip { padding: 5px 11px; border-radius: 999px; background: #fff; border: 1px solid var(--line); }
+  .forms { display: grid; gap: 12px; margin-top: 26px; }
+  .form { display: flex; align-items: center; justify-content: center; flex-direction: column; min-height: 76px; padding: 14px 20px; border-radius: 18px; background: var(--b); color: var(--on); text-decoration: none; box-shadow: 0 10px 24px -14px var(--b); transition: transform .18s ease, box-shadow .18s ease, filter .18s ease; }
+  .form b { font-size: 19px; font-weight: 700; }
+  .form span { margin-top: 2px; font-size: 14.5px; opacity: .88; }
+  .form:hover { transform: translateY(-2px) scale(1.012); box-shadow: 0 18px 30px -14px var(--b); filter: brightness(1.06); }
+  .form:focus-visible, .act:focus-visible, .soc:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .acts { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; margin-top: 12px; }
+  .act { padding: 13px 8px; border-radius: 14px; background: #fff; border: 1px solid var(--line); color: var(--ink); font-weight: 650; font-size: 15px; text-decoration: none; transition: transform .18s ease, border-color .18s ease; }
+  .act:hover { transform: translateY(-2px); border-color: var(--b); }
+  .socs { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 22px; }
+  .soc { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: #fff; border: 1px solid var(--line); color: var(--ink); transition: transform .18s ease, color .18s ease; }
+  .soc:hover { transform: translateY(-2px) rotate(-4deg); color: var(--b); }
+  .about { margin: 26px 0 0; padding: 18px; text-align: left; font-size: 15.5px; line-height: 1.5; background: #fff; border: 1px solid var(--line); border-radius: 16px; transition: border-color .18s ease; }
+  .about:hover { border-color: var(--b); }
+  .about p { margin: 0; white-space: pre-line; }
+  .about p + p { margin-top: 10px; color: var(--muted); }
+  footer { margin-top: 26px; font-size: 13.5px; color: var(--muted); }
+  footer a { color: inherit; }
+  .gone { padding-top: 22vh; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main id="m"><p class="tag">Loading...</p></main>
+<script type="module">
+const m = document.getElementById("m");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const svg = (body, extra = 'fill="none" stroke="currentColor" stroke-width="2"') => `<svg viewBox="0 0 24 24" width="20" height="20" ${extra} aria-hidden="true">${body}</svg>`;
+const SOCIAL = {
+  instagram: ["Instagram", svg('<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/>')],
+  tiktok: ["TikTok", svg('<path d="M14 3h3a4 4 0 0 0 4 4v3a7 7 0 0 1-4-1.3V15a6 6 0 1 1-6-6v3.2a2.8 2.8 0 1 0 3 2.8z"/>', 'fill="currentColor"')],
+  facebook: ["Facebook", svg('<path d="M14 8h3V4h-3a4 4 0 0 0-4 4v2H7v4h3v7h4v-7h3l1-4h-4V8.5a.5.5 0 0 1 .5-.5z"/>', 'fill="currentColor"')],
+  google_reviews: ["Google reviews", svg('<path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 21l1.6-7L2 9.2l7.1-.6z"/>', 'fill="currentColor"')],
+  website: ["Website", svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>')]
+};
+const slug = location.pathname.split("/").filter(Boolean).pop();
+const r = await fetch(`/api/page/${encodeURIComponent(slug)}`);
+if (!r.ok) {
+  m.innerHTML = '<div class="gone"><h1>Page not found</h1><p class="tag">Check the link, or ask the business for a new one.</p></div>';
+} else {
+  const p = await r.json();
+  const pr = p.profile;
+  const [cr, cg, cb] = [1, 3, 5].map((i) => parseInt(pr.brand_color.slice(i, i + 2), 16));
+  document.documentElement.style.setProperty("--b", pr.brand_color);
+  document.documentElement.style.setProperty("--on", 0.299 * cr + 0.587 * cg + 0.114 * cb > 165 ? "#0f1b33" : "#fff");
+  document.title = p.name;
+  const waiting = p.forms.reduce((n, f) => n + f.waiting, 0);
+  const place = [p.business_type, pr.city].filter(Boolean).join(" · ");
+  const socials = Object.entries(pr.links).filter(([, u]) => u)
+    .map(([k, u]) => `<a class="soc" href="${esc(u)}" target="_blank" rel="noopener" aria-label="${SOCIAL[k][0]}">${SOCIAL[k][1]}</a>`).join("");
+  const acts = [
+    pr.phone && `<a class="act" href="tel:${esc(pr.phone.replace(/[^0-9+]/g, ""))}">Call</a>`,
+    pr.address && `<a class="act" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pr.address)}" target="_blank" rel="noopener">Directions</a>`
+  ].filter(Boolean).join("");
+  m.innerHTML = `<div class="logo" aria-hidden="true">${esc(p.name.slice(0, 1))}</div>
+    <h1>${esc(p.name)}</h1>
+    ${pr.tagline ? `<p class="tag">${esc(pr.tagline)}</p>` : ""}
+    <div class="chips">${place ? `<span class="chip" style="text-transform:capitalize">${esc(place)}</span>` : ""}${p.ease.avg ? `<span class="chip">Ease ${p.ease.avg.toFixed(1)}</span>` : ""}${waiting ? `<span class="chip">${waiting} waiting</span>` : ""}</div>
+    <div class="forms">${p.forms.map((f) => `<a class="form" href="/go.html?id=${encodeURIComponent(f.id)}"><b>${esc(f.label)}</b>${f.subtitle ? `<span>${esc(f.subtitle)}</span>` : ""}</a>`).join("") || '<p class="tag">No forms are open right now.</p>'}</div>
+    ${acts ? `<div class="acts">${acts}</div>` : ""}
+    ${socials ? `<div class="socs">${socials}</div>` : ""}
+    ${pr.about || pr.hours ? `<div class="about">${pr.about ? `<p>${esc(pr.about)}</p>` : ""}${pr.hours ? `<p>${esc(pr.hours)}</p>` : ""}</div>` : ""}
+    <footer>Powered by <a href="/">Formify</a></footer>`;
+  for (const f of p.forms) fetch(`/api/kiosks/${encodeURIComponent(f.id)}/events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "view" }) }).catch(() => {});
+}
+</script>
+</body>
+</html>
