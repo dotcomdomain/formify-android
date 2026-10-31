@@ -1,5 +1,6 @@
 // Formify for Business. Hash routes: #live #forms #forms/new #forms/<id> #insights #settings
 import { mountKiosk } from "/render.js";
+import { theme, setTheme } from "/js/theme.js";
 
 const root = document.getElementById("root");
 const $ = (s, el = document) => el.querySelector(s);
@@ -66,13 +67,15 @@ function shell(active, inner) {
       <a class="brand" href="#live"><span class="mark">Form<i>ify</i></span><span class="tag">Business</span></a>
       ${me.locations.length ? `<label class="small" style="color:#9fb5a8;margin:0">Location</label>
         <select id="locsel">${me.locations.map((l) => `<option value="${l.id}"${l.id === loc?.id ? " selected" : ""}>${esc(l.name)}</option>`).join("")}</select>` : ""}
-      <nav>${[["live", "Live", alerts], ["forms", "Forms"], ["insights", "Insights"], ["settings", "Settings"]]
+      <nav>${[["live", "Live", alerts], me.perms.forms && ["forms", "Forms"], me.perms.insights && ["insights", "Insights"], me.perms.staff && ["people", "People"], ["settings", "Settings"]].filter(Boolean)
         .map(([k, l, c]) => `<button data-nav="${k}" class="${active === k ? "on" : ""}">${l}${c ? `<span class="count">${c}</span>` : ""}</button>`).join("")}</nav>
-      <div class="who">${esc(me.business.name)}<br>${esc(me.business.email)}</div>
+      <div class="who">${esc(me.member.name)} · ${esc(me.member.role)}<br>${esc(me.business.name)}
+        <div><button class="theme-dot" id="themeBtn" title="Switch theme" aria-label="Switch colour theme"></button></div></div>
     </aside>
     <main class="bizmain view">${inner}</main>
   </div>`;
   root.querySelectorAll("[data-nav]").forEach((b) => b.onclick = () => { location.hash = b.dataset.nav; });
+  $("#themeBtn").onclick = () => setTheme(theme() === "blue" ? "warm" : "blue");
   $("#locsel")?.addEventListener("change", (e) => { remember(e.target.value); loc = me.locations.find((l) => l.id === e.target.value); route(); });
 }
 
@@ -80,16 +83,16 @@ function route() {
   clearInterval(poll);
   if (!me) return;
   const [tab, id] = (location.hash.slice(1) || "live").split("/");
-  if (tab === "forms" && id) return renderBuilder(id === "new" ? null : id);
-  if (tab === "forms") return renderForms();
-  if (tab === "insights") return renderInsights();
+  if (tab === "forms" && me.perms.forms) return id ? renderBuilder(id === "new" ? null : id) : renderForms();
+  if (tab === "insights" && me.perms.insights) return renderInsights();
+  if (tab === "people" && me.perms.staff) return renderPeople();
   if (tab === "settings") return renderSettings();
   return renderLive();
 }
 window.addEventListener("hashchange", route);
 
 const noLocation = (title) => shell(title, `<h1>${title === "live" ? "Live" : "Insights"}</h1>
-  <div class="empty panel" style="margin-top:20px"><b>No locations yet</b>Create your first check-in form. It takes a sentence.<div style="margin-top:16px"><a href="#forms/new"><button class="btn-big">Create a form</button></a></div></div>`);
+  <div class="empty panel" style="margin-top:20px"><b>No locations yet</b>${me.perms.forms ? 'Create your first check-in form. It takes a sentence.<div style="margin-top:16px"><a href="#forms/new"><button class="btn-big">Create a form</button></a></div>' : "Ask your owner or a manager to set up a location."}</div>`);
 
 // ---------- Live ----------
 const amounts = {};
@@ -303,16 +306,62 @@ async function renderInsights() {
     </div>`;
 }
 
+// ---------- People (owner only) ----------
+async function renderPeople() {
+  shell("people", `<h1>People</h1><p class="muted">Give your team their own logins. Staff see the live front desk; managers can also edit forms and see insights. Every sensitive-data reveal is logged with their name.</p>
+    <div class="grid2" style="gap:22px;margin-top:18px">
+      <div class="panel"><h2 style="font-size:24px">Team</h2><div id="team"><p class="muted">Loading...</p></div></div>
+      <form class="panel" id="addp"><h2 style="font-size:24px">Add someone</h2>
+        <label for="pn">Name</label><input id="pn" required>
+        <label for="pe">Work email</label><input id="pe" type="email" required>
+        <label for="pr">Role</label><select id="pr"><option value="staff">Staff: live front desk</option><option value="manager">Manager: front desk, forms, insights</option></select>
+        <button style="margin-top:14px">Create login</button><p class="k-err small" id="perr"></p><div id="pout"></div></form>
+    </div>`);
+  const load = async () => {
+    const { members } = await api("/api/biz/staff");
+    $("#team").innerHTML = members.map((m) => `<div class="visit-row"><div><b>${esc(m.name)}</b><div class="muted small">${esc(m.email)} · ${esc(m.role)}</div></div>
+      ${m.role === "owner" ? '<span class="pill">owner</span>' : `<button class="ghost" data-rmm="${m.id}">Remove</button>`}</div>`).join("");
+    root.querySelectorAll("[data-rmm]").forEach((b) => b.onclick = async () => {
+      // Two taps, so nobody is removed by accident.
+      if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap to confirm"; b.style.color = "var(--clay)"; return; }
+      await api(`/api/biz/staff/${b.dataset.rmm}`, { method: "DELETE" }); toast("Removed. Their sessions ended."); load();
+    });
+  };
+  load();
+  $("#addp").addEventListener("submit", async (e) => {
+    e.preventDefault(); $("#perr").textContent = "";
+    try {
+      const r = await api("/api/biz/staff", { method: "POST", body: { name: $("#pn").value, email: $("#pe").value, role: $("#pr").value } });
+      $("#pout").innerHTML = `<div class="confirm" style="margin-top:14px"><b>Login created for ${esc(r.email)}</b><p class="small" style="margin:6px 0">One-time password (shown once): <code style="font-size:15px">${esc(r.temp_password)}</code></p><p class="muted small" style="margin:0">Give it to them in person. They should change it in Settings after signing in.</p></div>`;
+      e.target.reset(); load();
+    } catch (err) { $("#perr").textContent = err.message; }
+  });
+}
+
 // ---------- Settings ----------
 function renderSettings() {
   shell("settings", `<h1>Settings</h1>
     <div class="grid2" style="gap:22px;margin-top:18px">
-      <div class="panel"><h2 style="font-size:24px">Account</h2><p><strong>${esc(me.business.name)}</strong><br><span class="muted">${esc(me.business.email)}</span></p><button class="btn-alt" id="out">Sign out</button></div>
-      <div class="panel"><h2 style="font-size:24px">AI assistants can check people in</h2>
-        <p class="muted">Customers' own assistants (like Claude) can find you and check them in through Formify's MCP server, with the customer's confirmation.</p>
-        <pre style="white-space:pre-wrap;background:var(--cream);padding:12px;border-radius:10px;font-size:13px">claude mcp add --transport http formify ${esc(location.origin)}/mcp</pre></div>
+      <div class="panel"><h2 style="font-size:24px">Your login</h2><p><strong>${esc(me.member.name)}</strong> · ${esc(me.member.role)}<br><span class="muted">${esc(me.member.email)} · ${esc(me.business.name)}</span></p>
+        <form id="pw"><label for="cur">Current password</label><input id="cur" type="password" autocomplete="current-password" required>
+          <label for="nxt">New password</label><input id="nxt" type="password" minlength="8" autocomplete="new-password" required>
+          <div class="row" style="margin-top:14px;gap:8px"><button>Change password</button><button type="button" class="btn-alt" id="out">Sign out</button></div><p class="k-err small" id="pwerr"></p></form></div>
+      <div style="display:grid;gap:22px">
+        <div class="panel"><h2 style="font-size:24px">Appearance</h2><div class="seg" id="themes"><button type="button" data-th="warm" class="${theme() === "warm" ? "on" : ""}">Warm</button><button type="button" data-th="blue" class="${theme() === "blue" ? "on" : ""}">Blue</button></div></div>
+        <div class="panel"><h2 style="font-size:24px">Payments</h2>
+          <p class="muted" style="margin:0">${me.payments ? "Card payments run through <strong>Stripe test mode</strong>. Customers pay on their phone; no real money moves." : "Stripe isn't connected, so the phone Pay button is a demo. Add a Stripe test key to take test card payments."}</p></div>
+        <div class="panel"><h2 style="font-size:24px">AI assistants can check people in</h2>
+          <p class="muted">Customers' own assistants (like Claude) can find you and check them in through Formify's MCP server, with the customer's confirmation.</p>
+          <pre style="white-space:pre-wrap;background:var(--cream);padding:12px;border-radius:10px;font-size:13px">claude mcp add --transport http formify ${esc(location.origin)}/mcp</pre></div>
+      </div>
     </div>`);
   $("#out").onclick = async () => { await api("/api/biz/logout", { method: "POST" }); me = null; renderAuth(); };
+  root.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => { setTheme(b.dataset.th); renderSettings(); });
+  $("#pw").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await api("/api/biz/password", { method: "POST", body: { current: $("#cur").value, next: $("#nxt").value } }); toast("Password changed. Other devices were signed out."); e.target.reset(); }
+    catch (err) { $("#pwerr").textContent = err.message; }
+  });
 }
 
 async function boot(next) {

@@ -19,7 +19,8 @@ export async function onRequestPost({ params, request, env, waitUntil }) {
 
 // Dashboard: queue, today's numbers, audit log. Sensitive answers are masked unless revealed.
 export async function onRequestGet({ params, request, env }) {
-  if (!(await ownsKiosk(env, request, params.id))) return json({ error: "Sign in to see this location's queue." }, 403);
+  const member = await ownsKiosk(env, request, params.id);
+  if (!member) return json({ error: "Sign in to see this location's queue." }, 403);
   const config = await loadConfig(env, params.id);
   if (!config) return Response.json({ error: "Kiosk not found" }, { status: 404 });
 
@@ -41,7 +42,7 @@ export async function onRequestGet({ params, request, env }) {
   });
   if (reveal) {
     const t = results.find((r) => String(r.id) === reveal);
-    if (t) await env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)").bind(params.id, "viewed sensitive data", `Ticket ${t.ticket}`, Date.now()).run();
+    if (t) await env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)").bind(params.id, "viewed sensitive data", `Ticket ${t.ticket} · by ${member.name} (${member.role})`, Date.now()).run();
   }
   const ease = await easeFor(env, params.id);
   const feedback = (await env.DB.prepare("SELECT r.score, r.comment, r.at, c.ticket FROM ratings r JOIN checkins c ON c.id = r.checkin_id WHERE r.kiosk_id = ? ORDER BY r.at DESC LIMIT 8")

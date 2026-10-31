@@ -34,6 +34,9 @@ Takeaway: the lockdown layer (FreeKiosk, Fully Kiosk Browser) and single-purpose
 ## Accounts and privacy
 - Businesses sign in (PBKDF2 password hashing, HttpOnly session cookie). Queue, alerts, payments, edits and publishing are owner-only.
 - Customers don't need an account: their info stays on the device. An optional account syncs it across devices, encrypted with AES-GCM (key in the `PROFILE_KEY` Pages secret). "Delete my account" removes it and unlinks past visits.
+- Business logins are members with roles: owner (everything + People), manager (forms + insights), staff (live front desk). Sensitive-data reveals and money actions are logged with the member's name.
+- Payments: Stripe Checkout in test mode when `STRIPE_SECRET_KEY` (an `sk_test_` key) is set as a Pages secret; the server confirms with Stripe before marking a ticket paid. Live keys are refused. Without a key the phone Pay button is a demo.
+- Themes: warm (default) and blue, per device; `?theme=blue` on any link switches it.
 - Customer data is never sold. Insights are per business, own visitors only.
 
 ## Platform

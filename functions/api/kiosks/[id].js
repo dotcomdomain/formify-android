@@ -13,13 +13,14 @@ export async function onRequestGet({ params, env }) {
 
 // Owner edits a published form. The change is logged.
 export async function onRequestPut({ params, request, env }) {
-  if (!(await ownsKiosk(env, request, params.id))) return json({ error: "Not your location." }, 403);
+  const member = await ownsKiosk(env, request, params.id, "forms");
+  if (!member) return json({ error: "Only the owner or a manager can edit forms." }, 403);
   const { config } = await request.json().catch(() => ({}));
   const clean = sanitize(config);
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare("UPDATE kiosks SET config = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(clean), now, params.id),
-    env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)").bind(params.id, "edited", `Form updated: ${clean.steps.reduce((n, s) => n + s.fields.length, 0)} fields, retention ${clean.retention_days} days.`, now)
+    env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)").bind(params.id, "edited", `${member.name} (${member.role}) updated the form: ${clean.steps.reduce((n, s) => n + s.fields.length, 0)} fields, retention ${clean.retention_days} days.`, now)
   ]);
   return json({ ok: true });
 }

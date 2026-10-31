@@ -10,6 +10,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Formify</title>
+<script>try{var q=new URLSearchParams(location.search).get("theme");if(q==="blue"||q==="warm")localStorage.setItem("fz_theme",q);if((q||localStorage.getItem("fz_theme"))==="blue")document.documentElement.dataset.theme="blue"}catch(e){}</script>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/formify.css">
 </head>
@@ -22,7 +23,7 @@
       <button data-tab="assistant">Assistant</button>
       <button data-tab="you">You</button>
     </nav>
-    <a class="biz-link" href="/business.html">For businesses</a>
+    <div class="right"><button class="theme-dot" id="themeBtn" title="Switch theme" aria-label="Switch colour theme"></button><a class="biz-link" href="/business.html">For businesses</a></div>
   </header>
   <main class="page" id="view"></main>
 </div>

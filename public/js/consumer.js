@@ -1,5 +1,6 @@
 // Formify for customers: Search, Assistant, You. Hash routes: #search #assistant #you #b/<id> #checkin/<id>[/chat]
 import { mountKiosk } from "/render.js";
+import { theme, setTheme } from "/js/theme.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $("#view");
@@ -64,6 +65,7 @@ function route() {
   return renderSearch();
 }
 $("#tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) location.hash = b.dataset.tab; });
+$("#themeBtn").addEventListener("click", () => { setTheme(theme() === "blue" ? "warm" : "blue"); if (location.hash === "#you") renderYou(); });
 window.addEventListener("hashchange", route);
 
 // ---------- Search ----------
@@ -179,7 +181,7 @@ function renderAssistant() {
       <h3>Your check-in, handled.</h3>
       <ul>
         <li>Finds the business that fits, most used first.</li>
-        <li>Fills their form with what you say and <a href="#you" style="color:#f2c14e">your saved info</a>.</li>
+        <li>Fills their form with what you say and <a href="#you" style="color:var(--sun)">your saved info</a>.</li>
         <li>Shows you everything before anything is sent. You confirm, it checks you in.</li>
       </ul>
       <div class="try" style="margin-top:14px">${["I need a haircut today", "Ski rental for this weekend", "Walk-in clinic, sore throat"].map((t) => `<button type="button" data-try="${esc(t)}">${esc(t)}</button>`).join("")}</div>
@@ -346,6 +348,7 @@ function renderYou() {
           <form id="aform"><label for="a_email">Email</label><input id="a_email" type="email" autocomplete="email" required>
             <label for="a_pass">Password</label><input id="a_pass" type="password" autocomplete="${authMode === "signup" ? "new-password" : "current-password"}" minlength="8" required>
             <button style="margin-top:14px;width:100%">${authMode === "signup" ? "Create account and sync" : "Sign in"}</button><p class="k-err small" id="aerr"></p></form>`}</div>
+        <div class="panel"><h2>Appearance</h2><div class="seg" style="margin:0"><button type="button" data-th="warm" class="${theme() === "warm" ? "on" : ""}">Warm</button><button type="button" data-th="blue" class="${theme() === "blue" ? "on" : ""}">Blue</button></div></div>
         <div class="panel"><h2>Recent check-ins</h2>
           ${visits.length ? visits.map((v) => `<div class="visit-row"><div><b>${esc(v.name)}</b><div class="muted small">Ticket ${esc(v.ticket)} · ${new Date(v.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</div></div><a href="/visit.html#${esc(v.token)}" class="small">Status</a></div>`).join("")
             : '<p class="muted" style="margin:0">Nothing yet. <a href="#search">Find a place</a> or ask the <a href="#assistant">assistant</a>.</p>'}</div>
@@ -369,6 +372,7 @@ function renderYou() {
   });
   $("#signout")?.addEventListener("click", async () => { await api("/api/me/logout", { method: "POST" }); account = { signedIn: false }; local.del("ks_profile"); toast("Signed out. Info removed from this device."); renderYou(); });
   view.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => { authMode = b.dataset.mode; renderYou(); });
+  view.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => { setTheme(b.dataset.th); renderYou(); });
   $("#aform")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const body = { email: $("#a_email").value, password: $("#a_pass").value, profile: local.get("ks_profile", {}) };

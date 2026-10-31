@@ -1,4 +1,5 @@
 import { loadConfig, position } from "../../../lib/queue.js";
+import { stripeMode } from "../../../lib/stripe.js";
 
 async function load(env, token) {
   if (!/^[0-9a-f]{32}$/.test(token)) return null;
@@ -14,7 +15,7 @@ export async function onRequestGet({ params, env }) {
   return Response.json({
     kiosk_id: row.kiosk_id, name: config.name, brand_color: config.brand_color, ticket: row.ticket, status: row.status, code: row.code,
     rated: rated?.score || null,
-    amount_cents: row.amount_cents || null, paid_at: row.paid_at || null, pay_method: row.pay_method || null,
+    payments: stripeMode(env), amount_cents: row.amount_cents || null, paid_at: row.paid_at || null, pay_method: row.pay_method || null,
     links: { google_reviews: config.google_reviews || "", instagram: config.instagram || "", website: config.website || "" },
     ...(await position(env, row.kiosk_id, row, config))
   });
