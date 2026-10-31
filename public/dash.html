@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Front desk</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><div class="logo" id="name">Front desk</div><span class="muted small" id="sub"></span></div>
+    <a id="kioskLink" class="small" target="_blank">Open kiosk</a>
+  </div>
+
+  <div class="stats">
+    <div class="card stat"><div class="n" id="sWaiting">-</div><div class="l">Waiting now</div></div>
+    <div class="card stat"><div class="n" id="sToday">-</div><div class="l">Check-ins today</div></div>
+    <div class="card stat"><div class="n" id="sWait">-</div><div class="l">Avg. wait (min)</div></div>
+    <div class="card stat"><div class="n" id="sSaved">-</div><div class="l">Desk minutes saved today</div></div>
+  </div>
+
+  <div class="grid2" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+    <div class="card">
+      <h3>Queue</h3>
+      <table><thead><tr><th>Ticket</th><th>Arrived</th><th>Details</th><th>Status</th><th></th></tr></thead><tbody id="queue"></tbody></table>
+      <p id="empty" class="muted small" style="margin-top:12px">No check-ins yet. Open the kiosk and check someone in.</p>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:20px">
+        <h3>Check-ins by hour</h3>
+        <div class="bars" id="bars"></div>
+        <div class="row small muted" style="justify-content:space-between"><span>6am</span><span>12pm</span><span>6pm</span></div>
+      </div>
+      <div class="card">
+        <h3>Audit log</h3>
+        <p class="muted small" id="retention"></p>
+        <ul class="audit" id="audit"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+const id = new URLSearchParams(location.search).get("id");
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const time = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+// Rough estimate of desk time a manual check-in takes; replace with numbers from customer calls.
+const MANUAL_CHECKIN_MIN = 3;
+let reveal = "";
+
+$("#kioskLink").href = `/kiosk.html?id=${encodeURIComponent(id)}`;
+
+async function load() {
+  const r = await fetch(`/api/kiosks/${encodeURIComponent(id)}/checkins${reveal ? `?reveal=${reveal}` : ""}`);
+  if (!r.ok) { $("#name").textContent = "Kiosk not found"; return; }
+  const { config, checkins, audit } = await r.json();
+  document.documentElement.style.setProperty("--brand", config.brand_color);
+  $("#name").textContent = config.name;
+  $("#sub").textContent = `Front desk dashboard · alerts go to ${config.notify}`;
+  $("#retention").textContent = `Check-in data is deleted after ${config.retention_days} days.`;
+
+  const labels = Object.fromEntries(config.steps.flatMap((s) => s.fields.map((f) => [f.id, f.label])));
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const today = checkins.filter((c) => c.created_at >= start.getTime());
+  const waiting = checkins.filter((c) => c.status === "waiting");
+  const served = today.filter((c) => c.served_at);
+  const avg = served.length ? served.reduce((a, c) => a + (c.served_at - c.created_at), 0) / served.length / 60000 : 0;
+
+  $("#sWaiting").textContent = waiting.length;
+  $("#sToday").textContent = today.length;
+  $("#sWait").textContent = served.length ? avg.toFixed(1) : "-";
+  $("#sSaved").textContent = today.length * MANUAL_CHECKIN_MIN;
+
+  const active = checkins.filter((c) => c.status === "waiting" || c.status === "serving" || String(c.id) === reveal).reverse();
+  $("#empty").hidden = active.length > 0;
+  $("#queue").innerHTML = active.map((c) => {
+    const details = Object.entries(c.answers).map(([k, v]) => `<div><span class="muted">${esc(labels[k] || k)}:</span> ${v === true ? "Yes" : esc(v)}</div>`).join("");
+    const masked = Object.values(c.answers).includes("•••");
+    const next = c.status === "waiting" ? `<button data-s="serving" data-id="${c.id}">Call</button>` : `<button data-s="done" data-id="${c.id}">Done</button>`;
+    return `<tr><td><strong>${esc(c.ticket)}</strong></td><td>${time(c.created_at)}</td><td>${details}${masked ? `<button class="ghost" data-reveal="${c.id}" style="margin-top:6px">Reveal sensitive</button>` : ""}</td>
+      <td><span class="pill">${esc(c.status)}</span></td><td><div class="row" style="gap:6px">${next}<button class="ghost" data-s="no-show" data-id="${c.id}">No-show</button></div></td></tr>`;
+  }).join("");
+
+  const hours = Array.from({ length: 16 }, (_, i) => today.filter((c) => new Date(c.created_at).getHours() === i + 6).length);
+  const max = Math.max(1, ...hours);
+  $("#bars").innerHTML = hours.map((h, i) => `<div title="${i + 6}:00 · ${h}" style="height:${(h / max) * 100}%"></div>`).join("");
+
+  $("#audit").innerHTML = audit.map((a) => `<li><strong>${esc(a.action)}</strong> · ${time(a.at)}<div class="muted">${esc(a.detail)}</div></li>`).join("");
+}
+
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.reveal) { reveal = b.dataset.reveal; await load(); reveal = ""; return; }
+  if (b.dataset.s) {
+    await fetch(`/api/checkins/${b.dataset.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: b.dataset.s }) });
+    load();
+  }
+});
+
+load();
+setInterval(() => { if (!reveal) load(); }, 4000);
+</script>
+</body>
+</html>

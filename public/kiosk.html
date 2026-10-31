@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Check in</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="fullkiosk">
+<div id="k"><p class="muted" style="padding:30px">Loading...</p></div>
+<script type="module">
+import { mountKiosk } from "/render.js";
+
+const id = new URLSearchParams(location.search).get("id");
+const root = document.getElementById("k");
+const r = await fetch(`/api/kiosks/${encodeURIComponent(id)}`);
+if (!r.ok) {
+  root.innerHTML = '<p style="padding:30px">This kiosk link is not valid.</p>';
+} else {
+  const { config } = await r.json();
+  document.title = config.name;
+  mountKiosk(root, config, {
+    onSubmit: async (body) => {
+      const res = await fetch(`/api/kiosks/${encodeURIComponent(id)}/checkins`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      return data;
+    }
+  });
+}
+</script>
+</body>
+</html>
