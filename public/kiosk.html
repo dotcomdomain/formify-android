@@ -26,6 +26,7 @@ if (!r.ok) {
   document.title = config.name;
   mountKiosk(root, config, {
     mode: "kiosk",
+    kioskId: id,
     qrUrl: `${location.origin}/go.html?id=${encodeURIComponent(id)}`,
     onSubmit: (body) => api("checkins", body),
     onArrive: (code) => api("arrive", { code })

@@ -122,3 +122,27 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
 .rate button.on { background: var(--brand); color: #fff; }
 .rate-l { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
 .stars { color: var(--brand); font-weight: 800; }
+
+/* Assistant chat */
+.chat-wrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.chat { flex: 1; min-height: 220px; max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 12px; }
+.bubble { max-width: 82%; padding: 12px 15px; border-radius: 16px; font-size: 17px; line-height: 1.4; white-space: pre-wrap; }
+.bubble.assistant { background: #eef1f5; align-self: flex-start; border-bottom-left-radius: 4px; }
+.bubble.user { background: var(--brand); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.bubble.typing { display: flex; gap: 5px; padding: 15px; }
+.bubble.typing i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); animation: pulse 1s infinite; }
+.bubble.typing i:nth-child(2) { animation-delay: .2s; } .bubble.typing i:nth-child(3) { animation-delay: .4s; }
+.slots { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.slot { font-size: 13px; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.slot.need { border-style: dashed; }
+.slot.ok { background: #dcfce7; border-color: #86efac; color: #166534; font-weight: 600; }
+.slot.ok::before { content: "\2713  "; }
+.chat-in { display: flex; gap: 8px; }
+.chat-in input { flex: 1; font-size: 17px; padding: 13px; }
+.chat-in button { padding: 0 18px; }
+.chat-in .mic { background: #eef1f5; color: var(--ink); border: 1px solid var(--line); }
+.chat-in .mic.rec { background: #fee2e2; border-color: #fca5a5; color: #991b1b; animation: pulse 1s infinite; }
+.kiosk .k-btn:disabled { opacity: .45; }
+.kiosk.phone .chat { max-height: 52vh; }
+.kiosk.phone .chat-wrap .row .k-btn { width: auto; flex: 1; }
+.urgent-banner { background: #dc2626; color: #fff; font-weight: 700; font-size: 18px; padding: 14px 16px; border-radius: 10px; margin-bottom: 10px; }

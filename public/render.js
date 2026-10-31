@@ -57,11 +57,11 @@ async function speak(text, lang) {
   }
 }
 
-export function mountKiosk(root, config, { mode = "kiosk", onSubmit, onArrive, onDone, qrUrl, idleMs = 60000 } = {}) {
+export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, onArrive, onDone, qrUrl, idleMs = 60000 } = {}) {
   const fields = config.steps.flatMap((s) => s.fields);
   const phone = mode === "phone";
   let s;
-  const fresh = () => ({ screen: "welcome", step: 0, answers: {}, consent: false, result: null, error: "", busy: "", note: "", reply: "", language: "en", via: new Set(), remember: true, recording: false });
+  const fresh = () => ({ screen: "welcome", step: 0, answers: {}, consent: false, result: null, error: "", busy: "", note: "", reply: "", language: "en", via: new Set(), remember: true, recording: false, chat: [], thinking: false, draft: "", lastVoice: false, urgent: false });
   s = fresh();
   let idle, rec, recTimer;
   root.classList.add("kiosk");
@@ -93,10 +93,47 @@ export function mountKiosk(root, config, { mode = "kiosk", onSubmit, onArrive, o
 
   const aiBar = () => `
     <div class="ai-bar">
-      <button class="ai-btn${s.recording ? " rec" : ""}" data-go="mic">${s.recording ? "Stop" : "Talk instead"}</button>
+      <button class="ai-btn" data-go="chat">Talk to the assistant</button>
       <button class="ai-btn" data-go="scan">Scan a card</button>
       <input type="file" accept="image/*" capture="environment" id="scanInput" hidden>
     </div>`;
+
+  const isMissing = (f) => f.required && (s.answers[f.id] === undefined || s.answers[f.id] === "" || s.answers[f.id] === false);
+  const profileMatches = () => {
+    if (!phone) return 0;
+    const p = readProfile();
+    return fields.filter((f) => { const k = profileKey(f.label); return k && p[k] && s.answers[f.id] === undefined; }).length;
+  };
+
+  function chatHtml() {
+    const bubbles = s.chat.map((m) => `<div class="bubble ${m.role}">${esc(m.content)}</div>`).join("") + (s.thinking ? '<div class="bubble assistant typing"><i></i><i></i><i></i></div>' : "");
+    const filled = fields.map((f) => {
+      const v = s.answers[f.id];
+      const has = v !== undefined && v !== "" && v !== false;
+      return `<span class="slot${has ? " ok" : ""}${isMissing(f) ? " need" : ""}">${esc(f.label)}</span>`;
+    }).join("");
+    const ready = !fields.some(isMissing);
+    const saved = profileMatches();
+    return `<div class="chat-wrap">
+      ${s.urgent ? '<div class="urgent-banner">If this is an emergency, tell a staff member now or call 911.</div>' : ""}
+      <div class="chat" id="chatLog">${bubbles}</div>
+      <div class="slots">${filled}</div>
+      <form class="chat-in" onsubmit="return false">
+        <button class="mic${s.recording ? " rec" : ""}" data-go="chatmic" type="button" aria-label="${s.recording ? "Stop recording" : "Talk"}">${s.recording ? "Stop" : "Talk"}</button>
+        <input id="msg" placeholder="${s.recording ? "Listening..." : "Type here, or tap Talk"}" autocomplete="off" value="${esc(s.draft)}">
+        <button data-go="send" type="submit">Send</button>
+      </form>
+      <div class="row" style="gap:8px;margin-top:10px">
+        <button class="ai-btn" data-go="scan" type="button">Scan a card</button>
+        ${saved ? `<button class="ai-btn" data-go="useprofile" type="button">Use my saved info (${saved})</button>` : ""}
+        <input type="file" accept="image/*" capture="environment" id="scanInput" hidden>
+        <span style="flex:1"></span>
+        <button class="k-btn ghost" data-go="toform" type="button" style="margin:0">Fill the form instead</button>
+        <button class="k-btn" data-go="toreview" type="button" style="margin:0"${ready ? "" : " disabled"}>Review and check in</button>
+      </div>
+      <div class="k-err">${esc(s.error)}</div>
+    </div>`;
+  }
 
   function draw() {
     const head = `<div class="k-head"><span>${esc(config.name)}</span><span class="small" style="opacity:.85">${phone ? "Check in from your phone" : "Self check-in"}</span></div>`;
@@ -124,6 +161,8 @@ export function mountKiosk(root, config, { mode = "kiosk", onSubmit, onArrive, o
         <form onsubmit="return false">${st.fields.map((f) => fieldHtml(f, s.answers[f.id])).join("")}</form>
         <div class="k-err">${esc(s.error)}</div>
         <div class="k-nav"><button class="k-btn ghost" data-go="back">Back</button><button class="k-btn" data-go="next">${s.step === config.steps.length - 1 ? "Check in" : "Next"}</button></div>`;
+    } else if (s.screen === "chat") {
+      body = chatHtml();
     } else if (s.screen === "review") {
       body = `${aiBar()}
         ${s.note ? `<div class="ai-note">${esc(s.note)}</div>` : ""}
@@ -143,6 +182,49 @@ export function mountKiosk(root, config, { mode = "kiosk", onSubmit, onArrive, o
     if (s.screen === "welcome" && mode === "kiosk" && qrUrl && window.QRCode) new window.QRCode(root.querySelector("#qr"), { text: qrUrl, width: 120, height: 120 });
     root.querySelector("#scanInput")?.addEventListener("change", onScan);
     if (s.screen === "code") root.querySelector("#code")?.focus();
+    if (s.screen === "chat") {
+      const log = root.querySelector("#chatLog");
+      log.scrollTop = log.scrollHeight;
+      const msg = root.querySelector("#msg");
+      msg.addEventListener("input", () => { s.draft = msg.value; });
+      if (!phone) msg.focus();
+    }
+  }
+
+  // Assistant chat: each turn sends the conversation and current answers; the server returns
+  // a reply plus any fields it could fill. The visitor still reviews and submits.
+  function openChat() {
+    s.screen = "chat";
+    if (!s.chat.length) s.chat.push({ role: "assistant", content: `Hi! I'm the check-in assistant for ${config.name}. Tell me what brings you in today, or tap Talk and just say it.` });
+    draw();
+  }
+  async function chatSend(text, { voice = false } = {}) {
+    const t = String(text || "").trim();
+    if (!t) return;
+    s.chat.push({ role: "user", content: t });
+    s.draft = ""; s.thinking = true; s.error = ""; s.lastVoice = voice;
+    draw();
+    try {
+      const r = await post("/api/agent", { id: kioskId, config: kioskId ? undefined : config, messages: s.chat, answers: s.answers, language: s.language });
+      Object.assign(s.answers, r.answers || {});
+      if (Object.keys(r.answers || {}).length) s.via.add(voice ? "voice" : "assistant");
+      s.chat.push({ role: "assistant", content: r.reply });
+      if (r.urgent) s.urgent = true;
+      if (voice || r.urgent) speak(r.reply, s.language);
+    } catch (e) { s.error = e.message; }
+    s.thinking = false;
+    draw();
+  }
+  async function chatAudio(blob) {
+    s.thinking = true; draw();
+    try {
+      const r = await post("/api/stt", { audio: await toBase64(blob) });
+      s.thinking = false;
+      if (!r.text) { s.chat.push({ role: "assistant", content: "Sorry, I didn't catch that. Tap Talk and try again." }); return draw(); }
+      s.language = r.language || s.language;
+      s.via.add("voice");
+      await chatSend(r.text, { voice: true });
+    } catch (e) { s.thinking = false; s.error = e.message; draw(); }
   }
 
   async function submit() {
@@ -175,7 +257,8 @@ export function mountKiosk(root, config, { mode = "kiosk", onSubmit, onArrive, o
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         if (rec?.cancelled) return;
-        await onAudio(new Blob(chunks, { type: rec.mimeType }));
+        const blob = new Blob(chunks, { type: rec.mimeType });
+        if (s.screen === "chat") await chatAudio(blob); else await onAudio(blob);
       };
       rec.start();
       s.recording = true; s.error = ""; s.reply = "Listening... tell me everything in one go, then tap Stop.";
@@ -213,6 +296,11 @@ export function mountKiosk(root, config, { mode = "kiosk", onSubmit, onArrive, o
       const r = await post("/api/scan", { image: await shrink(file), fields });
       Object.assign(s.answers, r.answers);
       s.via.add("scan");
+      if (s.screen === "chat") {
+        s.busy = "";
+        const got = fields.filter((f) => r.answers[f.id] !== undefined).map((f) => f.label).join(", ");
+        return chatSend(r.found ? `I scanned my ${r.card_type}. (Filled: ${got}. The photo was not saved.)` : "I tried to scan my card but nothing was read.");
+      }
       s.note = r.found ? `Read from your ${r.card_type}: ${r.found} field${r.found > 1 ? "s" : ""} filled. The photo was not saved.` : "Couldn't find any details on that card. Try again or type them in.";
       s.reply = "";
       s.screen = "review";
@@ -243,6 +331,17 @@ export function mountKiosk(root, config, { mode = "kiosk", onSubmit, onArrive, o
       s.screen = "form"; s.step = 0; return draw();
     }
     if (go === "mic") { collect(visibleFields()); return s.recording ? stopRec() : startRec(); }
+    if (go === "chat") { collect(visibleFields()); return openChat(); }
+    if (go === "chatmic") return s.recording ? stopRec() : startRec();
+    if (go === "send") return chatSend(root.querySelector("#msg")?.value);
+    if (go === "useprofile") {
+      const p = readProfile();
+      const got = [];
+      for (const f of fields) { const k = profileKey(f.label); if (k && p[k] && s.answers[f.id] === undefined) { s.answers[f.id] = p[k]; got.push(f.label); } }
+      return chatSend(`Use my saved info. (Filled from this phone: ${got.join(", ")}.)`);
+    }
+    if (go === "toreview") { s.note = ""; s.reply = ""; s.screen = "review"; return draw(); }
+    if (go === "toform") { s.note = ""; s.screen = "form"; s.step = 0; return draw(); }
     if (go === "scan") return root.querySelector("#scanInput").click();
     if (go === "back") { collect(visibleFields()); if (s.step === 0) s.screen = "consent"; else s.step--; return draw(); }
     if (go === "next") {

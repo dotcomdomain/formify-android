@@ -26,6 +26,7 @@ if (!r?.ok) {
   document.title = `Check in · ${config.name}`;
   mountKiosk(root, config, {
     mode: "phone",
+    kioskId: id,
     onSubmit: async (body) => {
       const res = await fetch(`/api/kiosks/${encodeURIComponent(id)}/checkins`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
