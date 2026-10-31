@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS ratings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kiosk_id TEXT NOT NULL,
+  checkin_id INTEGER NOT NULL UNIQUE,
+  score INTEGER NOT NULL,
+  comment TEXT,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ratings_kiosk ON ratings (kiosk_id, at);

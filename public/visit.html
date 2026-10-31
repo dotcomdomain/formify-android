@@ -24,6 +24,8 @@
 <div class="visit">
   <div class="k-head" id="name">Your check-in</div>
   <div class="in" id="v"><p class="muted">Loading...</p></div>
+  <div class="in" id="rate" style="padding-top:0"></div>
+  <div class="in" style="padding-top:0"><a href="/me.html" class="small">My info and past check-ins</a> · <a href="/find.html" class="small">Find another business</a></div>
 </div>
 <script type="module">
 const token = location.hash.slice(1);
@@ -55,6 +57,44 @@ async function load() {
     await fetch(`/api/visit/${encodeURIComponent(token)}`, { method: "POST" });
     load();
   });
+  showRating(d);
+}
+
+// Rating box is drawn once per state so polling doesn't wipe what the visitor is typing.
+let rateState = "";
+function showRating(d) {
+  const box = document.getElementById("rate");
+  const canRate = d.status === "serving" || d.status === "done";
+  const state = d.rated ? "thanks" : canRate ? "ask" : "";
+  if (state === rateState) return;
+  rateState = state;
+  // Review links are shown to everyone, whatever they rated (no review gating).
+  const links = [
+    d.links.google_reviews && `<a href="${esc(d.links.google_reviews)}" target="_blank" rel="noopener">Leave a Google review</a>`,
+    d.links.instagram && `<a href="${esc(d.links.instagram)}" target="_blank" rel="noopener">Instagram</a>`,
+    d.links.website && `<a href="${esc(d.links.website)}" target="_blank" rel="noopener">Website</a>`
+  ].filter(Boolean).join("");
+  const linkHtml = links ? `<div class="linkbtns">${links}</div>` : "";
+  if (state === "thanks") {
+    box.innerHTML = `<div class="box"><div class="state">Thanks for rating</div><p class="muted" style="margin:0">Your score helps ${esc(d.name)} make visits easier.</p>${linkHtml}</div>`;
+  } else if (state === "ask") {
+    box.innerHTML = `<div class="box"><div class="state">How easy was checking in?</div>
+      <div class="rate">${[1, 2, 3, 4, 5].map((n) => `<button data-n="${n}">${n}</button>`).join("")}</div>
+      <div class="rate-l"><span>Very hard</span><span>Very easy</span></div>
+      <textarea id="comment" rows="2" placeholder="Anything we should know? (goes privately to the business)" style="margin-top:12px"></textarea>
+      <button id="sendRate" style="margin-top:10px" disabled>Send</button>${linkHtml}</div>`;
+    let score = 0;
+    box.querySelectorAll("[data-n]").forEach((b) => b.onclick = () => {
+      score = +b.dataset.n;
+      box.querySelectorAll("[data-n]").forEach((x) => x.classList.toggle("on", +x.dataset.n === score));
+      box.querySelector("#sendRate").disabled = false;
+    });
+    box.querySelector("#sendRate").onclick = async (e) => {
+      e.target.disabled = true;
+      await fetch(`/api/visit/${encodeURIComponent(token)}/rate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ score, comment: box.querySelector("#comment").value }) });
+      load();
+    };
+  } else box.innerHTML = "";
 }
 load();
 timer = setInterval(load, 5000);

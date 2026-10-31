@@ -24,17 +24,33 @@ Small and mid-size businesses that need a front-desk or self-serve screen but ha
 Takeaway: the lockdown layer (FreeKiosk, Fully Kiosk Browser) and single-purpose apps already exist. What's missing is the "form in, configured kiosk out" step that a non-technical business can do on its own.
 
 ## Live
-- Builder: https://kiosk-setup.pages.dev
-- Example clinic kiosk: https://kiosk-setup.pages.dev/kiosk.html?id=5cd39789
-- Its dashboard: https://kiosk-setup.pages.dev/dash.html?id=5cd39789
+- For businesses (builder): https://kiosk-setup.pages.dev
+- For customers (form finder): https://kiosk-setup.pages.dev/find.html
+- My info (wallet, stored on the phone only): https://kiosk-setup.pages.dev/me.html
+- Demo businesses (fictional, seeded by `scripts/seed.py`):
+  - Maple Lane Family Clinic: kiosk `/kiosk.html?id=b953a2f2`, dashboard `/dash.html?id=b953a2f2`, page `/b.html?id=b953a2f2`
+  - Lantern Noodle Bar: `303ac7a4`
+  - Terminal Assistance Desk: `d3394301`
+
+## Platform
+Two sides. Businesses create a check-in page from one sentence and pay per location. Customers are free: they find a business, check in from their phone before arriving, keep their details in a wallet on their own phone, and rate how easy the visit was (Ease Score).
+
+| Tier | Price (to validate) | Includes |
+|---|---|---|
+| Free | $0 | 1 form, QR code, finder listing |
+| Pro | ~$49 / location / month | Kiosk, AI voice + card scan, dashboard, handoff notes |
+| Insights | ~$149 / location / month | Anonymised benchmarks vs. similar businesses, staffing forecast, review tools |
+
+We never sell customer data. Insights are aggregated and anonymised; each business only sees its own visitors.
 
 ## How it works
-- `public/index.html`: owner describes the business, AI drafts the kiosk, owner edits and approves, then publishes.
-- `public/kiosk.html`: full-screen check-in for a tablet. Resets after 60 s idle.
-- `public/dash.html`: live queue, wait time, check-ins by hour, audit log. Sensitive answers masked until revealed (each reveal is logged).
-- `functions/api/generate.js`: Workers AI (Llama 3.3 70B, JSON mode) turns the description into a config; falls back to a template if the model fails.
-- `lib/config.js`: config schema, sanitizer and the clinic / restaurant / airport templates.
-- D1 database `kiosk-setup` (schema in `schema.sql`). Check-ins older than the kiosk's retention period are deleted.
+- `public/index.html`: owner describes the business, AI drafts the kiosk, owner edits (incl. public page links) and approves.
+- `public/kiosk.html`: tablet check-in with a "Skip the line" QR code and arrival-code entry.
+- `public/go.html` + `visit.html`: phone check-in, live place in line, "I'm here", post-visit Ease rating. Review links are shown to every visitor regardless of score (no review gating).
+- `public/find.html`, `b.html`, `me.html`: form finder, business page, customer wallet.
+- `public/dash.html`: queue with AI handoff notes and flags, Ease Score + private feedback, check-ins by hour, audit log.
+- AI (Workers AI): Llama 3.3 70B (generator, voice-to-form, handoff note), Whisper large v3 turbo (speech, any language), Llama 4 Scout (card scan, photo never stored), Deepgram Aura-2 (spoken replies).
+- D1 database `kiosk-setup`: `schema.sql`, then `migrations_002.sql`, `migrations_003.sql`.
 
 ## Deploy
 ```

@@ -29,6 +29,12 @@
     </div>
     <div>
       <div class="card" style="margin-bottom:20px">
+        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Ease Score</h3><a id="pubLink" class="small" target="_blank">Public page</a></div>
+        <div class="ease" style="margin:10px 0 4px"><span class="n" id="easeN" style="font-size:34px">-</span><span class="l" id="easeL">no ratings yet</span></div>
+        <p class="muted small" style="margin:0 0 6px">How easy visitors said checking in was (1-5). Comments are private to you.</p>
+        <ul class="audit" id="feedback"></ul>
+      </div>
+      <div class="card" style="margin-bottom:20px">
         <h3>Check-ins by hour</h3>
         <div class="bars" id="bars"></div>
         <div class="row small muted" style="justify-content:space-between"><span>6am</span><span>12pm</span><span>6pm</span></div>
@@ -56,7 +62,11 @@ $("#kioskLink").href = `/kiosk.html?id=${encodeURIComponent(id)}`;
 async function load() {
   const r = await fetch(`/api/kiosks/${encodeURIComponent(id)}/checkins${reveal ? `?reveal=${reveal}` : ""}`);
   if (!r.ok) { $("#name").textContent = "Kiosk not found"; return; }
-  const { config, checkins, audit } = await r.json();
+  const { config, checkins, audit, ease, feedback } = await r.json();
+  $("#pubLink").href = `/b.html?id=${encodeURIComponent(id)}`;
+  $("#easeN").textContent = ease.avg ? ease.avg.toFixed(1) : "-";
+  $("#easeL").textContent = ease.count ? `/ 5 · ${ease.count} rating${ease.count > 1 ? "s" : ""}` : "no ratings yet";
+  $("#feedback").innerHTML = feedback.map((f) => `<li><span class="stars">${f.score}/5</span> · ${esc(f.ticket)} · ${time(f.at)}${f.comment ? `<div>${esc(f.comment)}</div>` : ""}</li>`).join("");
   document.documentElement.style.setProperty("--brand", config.brand_color);
   $("#name").textContent = config.name;
   $("#sub").textContent = `Front desk dashboard · alerts go to ${config.notify}`;

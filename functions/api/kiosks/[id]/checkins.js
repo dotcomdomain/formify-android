@@ -1,5 +1,6 @@
 import { handoffNote } from "../../../../lib/ai.js";
 import { loadConfig, position } from "../../../../lib/queue.js";
+import { easeFor } from "../../../../lib/ease.js";
 
 const DAY = 86400000;
 
@@ -72,5 +73,8 @@ export async function onRequestGet({ params, request, env }) {
     const t = results.find((r) => String(r.id) === reveal);
     if (t) await env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)").bind(params.id, "viewed sensitive data", `Ticket ${t.ticket}`, Date.now()).run();
   }
-  return Response.json({ config, checkins, audit });
+  const ease = await easeFor(env, params.id);
+  const feedback = (await env.DB.prepare("SELECT r.score, r.comment, r.at, c.ticket FROM ratings r JOIN checkins c ON c.id = r.checkin_id WHERE r.kiosk_id = ? ORDER BY r.at DESC LIMIT 8")
+    .bind(params.id).all()).results;
+  return Response.json({ config, checkins, audit, ease, feedback });
 }

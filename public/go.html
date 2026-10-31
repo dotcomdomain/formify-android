@@ -33,7 +33,15 @@ if (!r?.ok) {
       return data;
     },
     // The token goes in the URL fragment so it never reaches server logs or referrers.
-    onDone: (result) => { location.href = `/visit.html#${result.token}`; }
+    onDone: (result) => {
+      // Remember the visit on this phone so "My info" can link back to it.
+      try {
+        const visits = JSON.parse(localStorage.getItem("ks_visits") || "[]");
+        visits.unshift({ token: result.token, ticket: result.ticket, name: config.name, kiosk_id: id, at: Date.now() });
+        localStorage.setItem("ks_visits", JSON.stringify(visits.slice(0, 20)));
+      } catch {}
+      location.href = `/visit.html#${result.token}`;
+    }
   });
 }
 </script>

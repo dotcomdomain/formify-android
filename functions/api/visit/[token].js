@@ -10,8 +10,11 @@ export async function onRequestGet({ params, env }) {
   const row = await load(env, params.token);
   if (!row) return Response.json({ error: "Visit not found" }, { status: 404 });
   const config = await loadConfig(env, row.kiosk_id);
+  const rated = await env.DB.prepare("SELECT score FROM ratings WHERE checkin_id = ?").bind(row.id).first();
   return Response.json({
-    name: config.name, brand_color: config.brand_color, ticket: row.ticket, status: row.status, code: row.code,
+    kiosk_id: row.kiosk_id, name: config.name, brand_color: config.brand_color, ticket: row.ticket, status: row.status, code: row.code,
+    rated: rated?.score || null,
+    links: { google_reviews: config.google_reviews || "", instagram: config.instagram || "", website: config.website || "" },
     ...(await position(env, row.kiosk_id, row, config))
   });
 }

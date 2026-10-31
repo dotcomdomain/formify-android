@@ -10,7 +10,7 @@
 <div class="wrap">
   <div class="top">
     <div class="logo">Kiosk<span>Setup</span></div>
-    <span class="muted small">Describe your front desk. Get a working kiosk.</span>
+    <nav class="row small" style="gap:18px;font-weight:600"><span class="muted">For businesses</span><a href="/find.html">Find a business</a><a href="/me.html">My info</a></nav>
   </div>
 
   <div class="card" style="margin-bottom:20px">
@@ -46,6 +46,16 @@
         <div><label>Delete data after (days)</label><input data-k="retention_days" type="number" min="1" max="365"></div>
         <div><label>Avg. minutes per visitor</label><input data-k="avg_service_minutes" type="number" min="1" max="120"></div>
       </div>
+
+      <div class="step-title">Your public page</div>
+      <p class="muted small" style="margin:4px 0 0">Customers find you in the Kiosk Setup finder, check in from their phone, and rate how easy it was.</p>
+      <div class="grid2" style="gap:12px">
+        <div><label>City</label><input data-k="city" placeholder="Hamilton, ON"></div>
+        <div><label>Instagram</label><input data-k="instagram" placeholder="@yourbusiness"></div>
+        <div><label>Google reviews link</label><input data-k="google_reviews" placeholder="g.page/r/..."></div>
+        <div><label>Website</label><input data-k="website" placeholder="yourbusiness.ca"></div>
+      </div>
+      <label class="check" style="font-weight:500"><input type="checkbox" data-k="listed" style="width:auto"> List my business in the finder</label>
 
       <div id="fields"></div>
 
@@ -97,7 +107,10 @@ $("#gen").onclick = async () => {
 };
 
 function fillEditor() {
-  document.querySelectorAll("[data-k]").forEach((el) => { el.value = config[el.dataset.k]; });
+  document.querySelectorAll("[data-k]").forEach((el) => {
+    if (el.type === "checkbox") el.checked = config[el.dataset.k] !== false;
+    else el.value = config[el.dataset.k] ?? "";
+  });
   $("#fields").innerHTML = config.steps.map((s, si) => `
     <div class="step-title">Step ${si + 1}: <input data-st="${si}" value="${s.title.replace(/"/g, "&quot;")}" style="display:inline;width:auto;padding:5px 8px"></div>
     ${s.fields.map((f, fi) => `
@@ -114,7 +127,7 @@ function fillEditor() {
 
 $("#result").addEventListener("input", (e) => {
   const el = e.target;
-  if (el.dataset.k) config[el.dataset.k] = el.type === "number" ? +el.value : el.value;
+  if (el.dataset.k) config[el.dataset.k] = el.type === "number" ? +el.value : el.type === "checkbox" ? el.checked : el.value;
   if (el.dataset.st) config.steps[+el.dataset.st].title = el.value;
   if (el.dataset.f) {
     const [si, fi, key] = el.dataset.f.split(".");
@@ -147,10 +160,11 @@ $("#publish").onclick = async () => {
   try {
     const r = await fetch("/api/kiosks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ config, source }) });
     const { id } = await r.json();
-    const k = `${location.origin}/kiosk.html?id=${id}`, d = `${location.origin}/dash.html?id=${id}`;
+    const k = `${location.origin}/kiosk.html?id=${id}`, d = `${location.origin}/dash.html?id=${id}`, b = `${location.origin}/b.html?id=${id}`;
     $("#pubStatus").textContent = "Live.";
     $("#links").innerHTML = `<p><strong>Kiosk</strong> (open on the tablet, full screen): <a href="${k}" target="_blank">${k}</a></p>
-      <p><strong>Front desk dashboard:</strong> <a href="${d}" target="_blank">${d}</a></p>`;
+      <p><strong>Front desk dashboard:</strong> <a href="${d}" target="_blank">${d}</a></p>
+      <p><strong>Your public page</strong> (share it, or print its QR code): <a href="${b}" target="_blank">${b}</a></p>`;
   } catch { $("#pubStatus").textContent = "Publish failed. Try again."; }
   $("#publish").disabled = false;
 };
