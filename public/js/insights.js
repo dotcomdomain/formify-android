@@ -81,22 +81,31 @@ function draw(d) {
     </div>`;
 }
 
-export function renderInsightsView({ shell, location, api, setPoll }) {
-  shell("insights", `<div class="row" style="justify-content:space-between;align-items:flex-end"><div><h1>Insights</h1><p class="muted" style="margin:0">${esc(location.name)} · your business's live visit data</p></div>
+export function renderInsightsView({ shell, location, api, setPoll, demo = false }) {
+  shell("insights", `<div class="row" style="justify-content:space-between;align-items:flex-end"><div><h1>Insights</h1><p class="muted" style="margin:0">${esc(location.name)} · ${demo ? "sample CRM data" : "your business's live visit data"}</p></div>
     <div class="row insight-controls"><label for="insight-period">Period</label><select id="insight-period">${[7,30,90].map((days) => `<option value="${days}"${days === selectedDays ? " selected" : ""}>Last ${days} days</option>`).join("")}</select><button type="button" class="btn-alt" id="insight-refresh">Refresh</button><a id="insight-export" class="biz-link">Export period CSV</a></div></div>
     <p id="insight-status" class="muted small" role="status" aria-live="polite">Loading analytics...</p><div id="ins" class="insight-content"></div>`);
   const host = document.getElementById("ins"), status = document.getElementById("insight-status"), period = document.getElementById("insight-period"), button = document.getElementById("insight-refresh");
-  let version = 0, loading = false, loadedDays = null;
+  let version = 0, loading = false, loadedDays = null, demoExportUrl = null;
   async function refresh() {
     if (!host.isConnected) return;
     const requestVersion = ++version, days = Number(period.value);
     selectedDays = days; loading = true; button.disabled = true;
-    document.getElementById("insight-export").href = `/api/kiosks/${encodeURIComponent(location.id)}/export?days=${days}`;
+    const exportLink = document.getElementById("insight-export");
+    const exportPath = `/api/kiosks/${encodeURIComponent(location.id)}/export?days=${days}`;
+    if (!demo) exportLink.href = exportPath;
     status.textContent = "Updating analytics...";
     if (loadedDays !== days) { host.innerHTML = '<p class="muted">Loading this period...</p>'; loadedDays = null; }
     try {
       const data = await api(`/api/kiosks/${encodeURIComponent(location.id)}/insights?days=${days}`);
       if (!host.isConnected || requestVersion !== version) return;
+      if (demo) {
+        const exported = await api(exportPath);
+        if (!host.isConnected || requestVersion !== version) return;
+        if (demoExportUrl) URL.revokeObjectURL(demoExportUrl);
+        demoExportUrl = URL.createObjectURL(new Blob([exported.csv], { type: "text/csv;charset=utf-8" }));
+        exportLink.href = demoExportUrl; exportLink.download = "formify-demo-visits.csv";
+      }
       host.innerHTML = draw(data); loadedDays = days;
       host.querySelectorAll("[data-insight-feedback]").forEach((b) => b.onclick = () => host.querySelector("#insight-feedback").scrollIntoView({ behavior: "smooth", block: "start" }));
       status.textContent = `Updated ${date(data.generated_at)}. Refreshes every 30 seconds while this tab is visible.`;

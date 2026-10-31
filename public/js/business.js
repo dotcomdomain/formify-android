@@ -2,6 +2,19 @@
 import { mountKiosk } from "/render.js";
 import { theme, setTheme } from "/js/theme.js";
 import { renderInsightsView } from "/js/insights.js";
+import { createDemo, COMPANY_SAMPLE } from "/js/demo.js";
+
+let demoStorage;
+try { demoStorage = localStorage; } catch {}
+const demo = createDemo(demoStorage);
+const demoEntry = new URL(location.href);
+if (demoEntry.searchParams.get("demo") === "1") {
+  demo.setEnabled(true);
+  demoEntry.searchParams.delete("demo");
+  history.replaceState(null, "", demoEntry.pathname + demoEntry.search + demoEntry.hash);
+}
+const switchDemo = (enabled) => { demo.setEnabled(enabled); location.reload(); };
+const demoUrl = (id = loc?.id || COMPANY_SAMPLE.id, view = "kiosk") => `${location.origin}/demo.html?view=${encodeURIComponent(view)}&id=${encodeURIComponent(id)}`;
 
 const root = document.getElementById("root");
 const $ = (s, el = document) => el.querySelector(s);
@@ -9,6 +22,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const time = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const money = (c) => `$${((c || 0) / 100).toFixed(2)}`;
 async function api(url, opts = {}) {
+  if (demo.enabled) return demo.request(url, opts);
   const r = await fetch(url, { ...opts, headers: { "content-type": "application/json" }, body: opts.body ? JSON.stringify(opts.body) : undefined });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(data.error || "Something went wrong."); e.status = r.status; throw e; }
@@ -17,8 +31,8 @@ async function api(url, opts = {}) {
 function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), 2600); }
 
 let me = null, loc = null, poll;
-const pick = () => { try { return localStorage.getItem("fz_loc"); } catch { return null; } };
-const remember = (id) => { try { localStorage.setItem("fz_loc", id); } catch {} };
+const pick = () => { try { return localStorage.getItem(demo.enabled ? "fz_demo_loc" : "fz_loc"); } catch { return null; } };
+const remember = (id) => { try { localStorage.setItem(demo.enabled ? "fz_demo_loc" : "fz_loc", id); } catch {} };
 
 // ---------- Auth ----------
 let mode = "login";
@@ -42,11 +56,13 @@ function renderAuth() {
         <label for="pass">Password</label><input id="pass" type="password" minlength="8" required autocomplete="${mode === "login" ? "current-password" : "new-password"}">
         <button style="width:100%;margin-top:18px" class="btn-big">${mode === "login" ? "Sign in" : "Create my account"}</button>
         <p class="k-err" id="err"></p>
+        <button type="button" id="explore-demo" class="btn-alt" style="width:100%">Explore with demo data</button>
         <p class="muted small">Looking to check in somewhere? <a href="/">Go to Formify</a></p>
       </form>
     </section>
   </div>`;
   root.querySelectorAll("[data-m]").forEach((b) => b.onclick = () => { mode = b.dataset.m; renderAuth(); });
+  $("#explore-demo").onclick = () => { demo.setEnabled(true); location.hash = "live"; location.reload(); };
   $("#auth").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
@@ -73,10 +89,18 @@ function shell(active, inner) {
       <div class="who">${esc(me.member.name)} · ${esc(me.member.role)}<br>${esc(me.business.name)}
         <div><button class="theme-dot" id="themeBtn" title="Switch theme" aria-label="Switch colour theme"></button></div></div>
     </aside>
-    <main class="bizmain view">${inner}</main>
+    <main class="bizmain view">${demo.enabled ? `<div class="demo-banner" role="status"><div><strong>Demo mode</strong><span>Fictional data. Changes stay in this browser; messages, payments and publishing are simulated.</span></div><div class="row"><a href="${demoUrl(COMPANY_SAMPLE.id)}" target="_blank" rel="noopener">Try Snow Valley concept</a><button type="button" id="exit-demo">Exit demo</button></div></div>` : ""}${inner}</main>
   </div>`;
   root.querySelectorAll("[data-nav]").forEach((b) => b.onclick = () => { location.hash = b.dataset.nav; });
   $("#themeBtn").onclick = () => setTheme(theme() === "blue" ? "warm" : "blue");
+  $("#exit-demo")?.addEventListener("click", () => switchDemo(false));
+  if (demo.enabled) root.querySelectorAll("a[href]").forEach((link) => {
+    const url = new URL(link.href, location.origin);
+    if (url.origin !== location.origin) return;
+    const page = url.pathname.match(/^\/(kiosk|go|now)(?:\.html)?$/);
+    if (page) link.href = demoUrl(url.searchParams.get("id") || loc.id, { kiosk:"kiosk", go:"phone", now:"now" }[page[1]]);
+    else if (url.pathname.startsWith("/p/") || url.hash.startsWith("#b/")) link.href = demoUrl(loc?.id, "page");
+  });
   $("#locsel")?.addEventListener("change", (e) => { remember(e.target.value); loc = me.locations.find((l) => l.id === e.target.value); route(); });
 }
 
@@ -270,6 +294,27 @@ root.addEventListener("click", async (e) => {
 root.addEventListener("input", (e) => { if (e.target.dataset.amt) amounts[e.target.dataset.amt] = e.target.value; if (e.target.dataset.tin) drafts[e.target.dataset.tin] = e.target.value; const { apt, apa } = e.target.dataset; if (apt) (apDrafts[apt] ||= {}).title = e.target.value; if (apa) (apDrafts[apa] ||= {}).amount = e.target.value; });
 root.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.dataset.tin) { e.preventDefault(); sendReply(e.target.dataset.tin, e.target.value); } });
 
+root.addEventListener("click", (event) => {
+  const link = event.target.closest("a[href]");
+  if (!demo.enabled || !link) return;
+  const url = new URL(link.href, location.origin);
+  if (url.origin !== location.origin) return;
+  if (url.pathname.startsWith("/api/")) {
+    event.preventDefault();
+    try {
+      const data = demo.request(url.pathname + url.search);
+      if (!data.csv) return toast("This demo download is unavailable.");
+      const blobUrl = URL.createObjectURL(new Blob([data.csv], { type: "text/csv;charset=utf-8" }));
+      const anchor = document.createElement("a"); anchor.href = blobUrl; anchor.download = "formify-demo-visits.csv"; anchor.click();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (error) { toast(error.message); }
+    return;
+  }
+  const page = url.pathname.match(/^\/(kiosk|go|now)(?:\.html)?$/);
+  if (page) link.href = demoUrl(url.searchParams.get("id") || loc.id, { kiosk:"kiosk", go:"phone", now:"now" }[page[1]]);
+  else if (url.pathname.startsWith("/p/") || url.hash.startsWith("#b/")) link.href = demoUrl(loc?.id, "page");
+});
+
 // ---------- Forms ----------
 function renderForms() {
   shell("forms", `<div class="row" style="justify-content:space-between;align-items:flex-end"><div><h1>Forms</h1><p class="muted" style="margin:0">One form per location. Share the link, print the QR, or run it on a tablet.</p></div>
@@ -277,7 +322,7 @@ function renderForms() {
     <div class="cards" style="margin-top:22px">${me.locations.map((l) => `<div class="loccard" style="--b:${esc(l.brand_color)}">
       <h3>${esc(l.name)}</h3><div class="muted small" style="text-transform:capitalize">${esc(l.business_type)}${l.city ? ` · ${esc(l.city)}` : ""} · Ease ${l.ease.avg ?? "–"}</div>
       <div class="links"><a href="#forms/${l.id}">Edit form</a><a href="/kiosk.html?id=${l.id}" target="_blank">Kiosk</a><a href="/go.html?id=${l.id}" target="_blank">Phone link</a><a href="/now.html?id=${l.id}" target="_blank">Now serving screen</a><a href="${me.business.slug ? `/p/${me.business.slug}` : `/#b/${l.id}`}" target="_blank">Public page</a><button data-qr="${l.id}">QR code</button></div>
-      <div class="links"><button data-copy="${esc(`${location.origin}/go.html?id=${l.id}`)}" data-copied="Link copied. Add it to Linktree, a bio or an email.">Copy form link</button><button data-copy="${esc(`<iframe src="${location.origin}/go.html?id=${l.id}" title="${l.name}" width="100%" height="760" style="border:0"></iframe>`)}" data-copied="Embed code copied. Paste it into a WordPress Custom HTML block.">Copy website embed</button></div>
+      <div class="links"><button data-copy="${esc(demo.enabled ? demoUrl(l.id,"phone") : `${location.origin}/go.html?id=${l.id}`)}" data-copied="Link copied. Add it to Linktree, a bio or an email.">Copy form link</button><button data-copy="${esc(`<iframe src="${demo.enabled ? demoUrl(l.id,"phone") : `${location.origin}/go.html?id=${l.id}`}" title="${l.name}" width="100%" height="760" style="border:0"></iframe>`)}" data-copied="Embed code copied. Paste it into a WordPress Custom HTML block.">Copy website embed</button></div>
       <div data-qrbox="${l.id}" style="margin-top:12px"></div>
       <div class="bthread"><div class="send"><input type="email" data-invmail="${l.id}" placeholder="Their email" aria-label="Email to invite"><button data-invsend="${l.id}">Invite</button></div>
         <input data-invname="${l.id}" placeholder="Their name (optional)" aria-label="Their name" style="width:100%;margin-top:6px;padding:8px 10px"><div class="small muted" data-invlist="${l.id}" style="margin-top:8px"></div></div></div>`).join("") || '<div class="empty panel" style="grid-column:1/-1"><b>No forms yet</b>Create one in a sentence.</div>'}</div>`);
@@ -285,7 +330,7 @@ function renderForms() {
   root.querySelectorAll("[data-qr]").forEach((b) => b.onclick = () => {
     const box = root.querySelector(`[data-qrbox="${b.dataset.qr}"]`);
     if (box.childElementCount) { box.innerHTML = ""; return; }
-    new window.QRCode(box, { text: `${location.origin}/go.html?id=${b.dataset.qr}`, width: 140, height: 140 });
+    new window.QRCode(box, { text: demo.enabled ? demoUrl(b.dataset.qr, "phone") : `${location.origin}/go.html?id=${b.dataset.qr}`, width: 140, height: 140 });
   });
 }
 
@@ -305,7 +350,8 @@ async function sendInvite(id) {
   const r = await api(`/api/kiosks/${id}/invites`, { method: "POST", body: { email: email.value, name: name.value } });
   email.value = ""; name.value = "";
   // Until email sending is connected, the invite opens as a ready-made draft in the owner's own mail app.
-  if (r.mailto) { location.href = r.mailto; toast("Invite ready in your email app."); } else toast("Invite sent.");
+  if (demo.enabled) toast("Demo invite added. No email was sent.");
+  else if (r.mailto) { location.href = r.mailto; toast("Invite ready in your email app."); } else toast("Invite sent.");
   await drawInvites(id);
 }
 
@@ -362,12 +408,16 @@ async function renderBuilder(id) {
     status.textContent = "Reading your document and drafting questions. This may take a minute...";
     form.setAttribute("aria-busy", "true");
     try {
-      const response = await fetch("/api/import", { method: "POST", body: new FormData(form) });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Could not import the document. Try again.");
+      let result;
+      if (demo.enabled) result = demo.request("/api/import", { method: "POST" });
+      else {
+        const response = await fetch("/api/import", { method: "POST", body: new FormData(form) });
+        result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Could not import the document. Try again.");
+      }
       if (!form.isConnected) return;
       draft = result.config; source = "document"; importWarnings = result.warnings || [];
-      status.textContent = `Imported ${file.name}. Review the draft and notes below.`;
+      status.textContent = demo.enabled ? "Sample import ready. Your document was not uploaded or converted." : `Imported ${file.name}. Review the draft and notes below.`;
       $("#gstat").textContent = "";
       openEditor(null);
       $("#editor").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -388,7 +438,7 @@ function openEditor(id) {
   ed.classList.remove("grid2");
   ed.innerHTML = `<div class="bldmain">
       <div class="bldhead"><div><h2>${id ? "Edit your form" : "Your form is ready"}</h2><p class="muted">Check the questions, try the preview, then publish.</p></div>
-        <div class="bldact"><button id="save" class="btn-big">${id ? "Save changes" : "Publish form"}</button><span class="muted small" id="sstat"></span></div></div>
+        <div class="bldact"><button id="save" class="btn-big">${demo.enabled ? "Save demo form" : id ? "Save changes" : "Publish form"}</button><span class="muted small" id="sstat"></span></div></div>
       ${source === "document" ? `<section class="import-notes" aria-label="Document import review">
         <strong>Check your imported form</strong>
         <ul>${importWarnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>
@@ -412,7 +462,7 @@ function openEditor(id) {
         </select>
       </details>
       <details class="bldsec"><summary>Privacy and consent</summary>
-        <label>Consent text customers agree to</label><textarea data-k="consent_text" rows="3"></textarea>
+        <label>Consent text customers agree to</label><textarea data-k="consent_text" rows="3" maxlength="4000"></textarea>
         <div class="grid2" style="gap:12px">${f("retention_days", "Delete data after (days)", 'type="number" min="1" max="365"')}${f("avg_service_minutes", "Minutes per customer", 'type="number" min="1" max="120"')}</div>
         <p class="muted small">Private answers stay hidden from staff until revealed, and every reveal is logged.</p>
       </details>
@@ -475,7 +525,7 @@ function openEditor(id) {
     $("#save").disabled = true;
     try {
       if (id) { await api(`/api/kiosks/${id}`, { method: "PUT", body: { config: draft } }); toast("Saved"); }
-      else { const r = await api("/api/kiosks", { method: "POST", body: { config: draft, source } }); remember(r.id); toast("Live! Your form is published."); }
+      else { const r = await api("/api/kiosks", { method: "POST", body: { config: draft, source } }); remember(r.id); toast(demo.enabled ? "Sample form saved in this browser." : "Live! Your form is published."); }
       await loadMe(); location.hash = "forms";
     } catch (e) { $("#sstat").textContent = e.message; }
     $("#save").disabled = false;
@@ -573,7 +623,7 @@ let pn = 0;
 function preview() {
   const host = document.createElement("div");
   $("#preview").replaceChildren(host);
-  mountKiosk(host, draft, { mode: "preview", onSubmit: async () => ({ ticket: `${draft.ticket_prefix}${String(++pn).padStart(3, "0")}`, ahead: 2, wait_minutes: 2 * draft.avg_service_minutes }) });
+  mountKiosk(host, draft, { mode: "preview", demo: demo.enabled, onSubmit: async () => ({ ticket: `${draft.ticket_prefix}${String(++pn).padStart(3, "0")}`, ahead: 2, wait_minutes: 2 * draft.avg_service_minutes }) });
 }
 
 // ---------- Page: one public page with every form and the business's links ----------
@@ -628,9 +678,9 @@ async function renderPageEditor() {
     drawForms();
   });
   const drawLive = (slug, published) => {
-    const url = `${location.origin}/p/${slug}`;
+    const url = demo.enabled ? demoUrl(loc?.id, "page") : `${location.origin}/p/${slug}`;
     $("#pglive").innerHTML = published
-      ? `<h2 style="font-size:22px">Your page is live</h2><p style="word-break:break-all"><a href="${url}" target="_blank" rel="noopener">${esc(url)}</a></p>
+      ? `<h2 style="font-size:22px">${demo.enabled ? "Preview your sample page" : "Your page is live"}</h2><p style="word-break:break-all"><a href="${url}" target="_blank" rel="noopener">${esc(url)}</a></p>
          <div class="row" style="gap:8px"><a href="${url}" target="_blank" rel="noopener"><button type="button">Open page</button></a><button type="button" class="btn-alt" id="pgcopy">Copy link</button></div><div id="pgqr" style="margin-top:14px"></div>`
       : `<h2 style="font-size:22px">Not published yet</h2><p class="muted" style="margin:0">Save to publish your page at ${esc(location.host)}/p/${esc(slug)}.</p>`;
     if (published) {
@@ -652,8 +702,7 @@ async function renderPageEditor() {
       } });
       toast("Page saved");
       await loadMe();
-      renderPageEditor();
-      drawLive(r.slug, true);
+      await renderPageEditor();
     } catch (err) { $("#pgerr").textContent = err.message; }
   });
 }
@@ -661,7 +710,7 @@ async function renderPageEditor() {
 // ---------- Insights ----------
 function renderInsights() {
   if (!loc) return noLocation("insights");
-  return renderInsightsView({ shell, location: loc, api, setPoll: (timer) => { poll = timer; } });
+  return renderInsightsView({ shell, location: loc, api, demo: demo.enabled, setPoll: (timer) => { poll = timer; } });
 }
 
 // ---------- People (owner only) ----------
@@ -699,6 +748,9 @@ async function renderPeople() {
 // ---------- Settings ----------
 function renderSettings() {
   shell("settings", `<h1>Settings</h1>
+    <section class="panel demo-settings" style="margin-top:18px"><div><h2 style="font-size:24px">Demo mode</h2><p class="muted">Explore sample queues, messages, forms, CRM insights, payments and team members. Your real account and customer records stay separate.</p></div>
+      <label class="demo-toggle" for="demo-toggle"><input id="demo-toggle" type="checkbox" role="switch" ${demo.enabled ? "checked" : ""}> Use demo data</label>
+      ${demo.enabled ? '<button id="reset-demo" type="button" class="btn-alt">Reset sample data</button>' : ""}</section>
     <div class="grid2" style="gap:22px;margin-top:18px">
       <div class="panel"><h2 style="font-size:24px">Your login</h2><p><strong>${esc(me.member.name)}</strong> · ${esc(me.member.role)}<br><span class="muted">${esc(me.member.email)} · ${esc(me.business.name)}</span></p>
         <form id="pw"><label for="cur">Current password</label><input id="cur" type="password" autocomplete="current-password" required>
@@ -707,7 +759,7 @@ function renderSettings() {
       <div style="display:grid;gap:22px">
         <div class="panel"><h2 style="font-size:24px">Appearance</h2><div class="seg" id="themes"><button type="button" data-th="warm" class="${theme() === "warm" ? "on" : ""}">Warm</button><button type="button" data-th="blue" class="${theme() === "blue" ? "on" : ""}">Blue</button></div></div>
         <div class="panel"><h2 style="font-size:24px">Payments</h2>
-          <p class="muted" style="margin:0">${me.payments ? "Card payments run through <strong>Stripe test mode</strong>. Customers pay on their phone; no real money moves." : "Stripe isn't connected, so the phone Pay button is a demo. Add a Stripe test key to take test card payments."}</p></div>
+          <p class="muted" style="margin:0">${demo.enabled ? "Sample payments are simulated in this browser. No payment processor is connected to the demo." : me.payments ? "Card payments run through <strong>Stripe test mode</strong>. Customers pay on their phone; no real money moves." : "Stripe isn't connected, so the phone Pay button is a demo. Add a Stripe test key to take test card payments."}</p></div>
         ${me.perms.staff ? `<div class="panel"><h2 style="font-size:24px">Connect your systems</h2>
           <p class="muted">Formify sends every check-in, update, payment and message to your webhook: connect Zapier or Make to reach your booking tool, POS, CRM or a Google Sheet, or point it at your own software. Signed with a secret so you can verify it.</p>
           <form id="whf"><label for="wh">Webhook URL</label><input id="wh" type="url" placeholder="https://hooks.zapier.com/..." autocomplete="off">
@@ -716,10 +768,18 @@ function renderSettings() {
           <p class="muted small" style="margin:10px 0 0">Also: CSV export in Insights, and the MCP server below for AI assistants.</p></div>` : ""}
         <div class="panel"><h2 style="font-size:24px">AI assistants can check people in</h2>
           <p class="muted">Customers' own assistants (like Claude) can find you and check them in through Formify's MCP server, with the customer's confirmation.</p>
-          <pre style="white-space:pre-wrap;background:var(--cream);padding:12px;border-radius:10px;font-size:13px">claude mcp add --transport http formify ${esc(location.origin)}/mcp</pre></div>
+          ${demo.enabled ? '<p class="muted small">Assistant check-ins are simulated locally in this demo. Exit demo mode to connect an agent to your real business.</p>' : `<pre style="white-space:pre-wrap;background:var(--cream);padding:12px;border-radius:10px;font-size:13px">claude mcp add --transport http formify ${esc(location.origin)}/mcp</pre>`}</div>
       </div>
     </div>`);
-  $("#out").onclick = async () => { await api("/api/biz/logout", { method: "POST" }); me = null; renderAuth(); };
+  $("#demo-toggle").onchange = (event) => switchDemo(event.target.checked);
+  $("#reset-demo")?.addEventListener("click", () => { demo.reset(); location.reload(); });
+  $("#out").onclick = async () => { if (demo.enabled) return switchDemo(false); await api("/api/biz/logout", { method: "POST" }); me = null; renderAuth(); };
+  if (demo.enabled) {
+    $("#cur").disabled = true; $("#nxt").disabled = true;
+    $("#pw button:not([type='button'])").disabled = true;
+    $("#out").textContent = "Exit demo";
+    $("#pwerr").textContent = "Password changes are unavailable in demo mode.";
+  }
   if (me.perms.staff) {
     api("/api/biz/integrations").then((x) => { $("#wh").value = x.webhook_url || ""; }).catch(() => {});
     $("#whf").addEventListener("submit", async (e) => {
@@ -729,7 +789,7 @@ function renderSettings() {
         $("#whout").innerHTML = r.secret ? `Saved. Signing secret (shown once): <code>${esc(r.secret)}</code>. Verify the <code>x-formify-signature</code> header (HMAC-SHA256 of the body).` : "Webhook removed.";
       } catch (err) { $("#whout").textContent = err.message; }
     });
-    $("#whtest").onclick = async () => { try { await api("/api/biz/integrations", { method: "POST", body: { test: true } }); $("#whout").textContent = "Test event sent."; } catch (err) { $("#whout").textContent = err.message; } };
+    $("#whtest").onclick = async () => { try { await api("/api/biz/integrations", { method: "POST", body: { test: true } }); $("#whout").textContent = demo.enabled ? "Demo event simulated. No webhook request was sent." : "Test event sent."; } catch (err) { $("#whout").textContent = err.message; } };
   }
   root.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => { setTheme(b.dataset.th); renderSettings(); });
   $("#pw").addEventListener("submit", async (e) => {

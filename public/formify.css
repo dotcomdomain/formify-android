@@ -259,6 +259,34 @@ body.app::before {
 
 /* Playbooks */
 /* Business analytics */
+.demo-banner { display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; padding: 16px 20px; margin-bottom: 22px; background: #fff0c7; color: #453515; border: 1px solid #d9b762; border-radius: 16px; }
+.demo-banner strong, .demo-banner span { display: block; }
+.demo-banner span { font-size: 13px; max-width: 660px; margin-top: 3px; }
+.demo-banner a { color: inherit; font-size: 14px; font-weight: 650; }
+.demo-banner button { background: #453515; color: #fff; padding: 8px 12px; }
+.demo-settings { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.demo-settings > div { flex: 1; min-width: min(100%, 240px); }
+.demo-settings p { margin: 0; }
+.demo-toggle { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.demo-toggle input { width: 22px; height: 22px; accent-color: var(--forest); }
+.demo-lab { position: relative; z-index: 1; }
+.demo-concept-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 36px; margin-top: 28px; align-items: start; }
+.demo-story h1 { font-size: clamp(34px, 4.4vw, 58px); line-height: 1.06; color: var(--forest-ink); }
+.demo-eyebrow { font-size: 12px; font-weight: 750; text-transform: uppercase; letter-spacing: .1em; color: var(--clay); }
+.demo-lead { font-size: 19px; line-height: 1.55; margin: 20px 0; }
+.demo-story h2 { font-size: 24px; }
+.demo-story .panel p { font-size: 15px; }
+.demo-benefits { display: grid; gap: 16px; margin: 24px 0; }
+.demo-benefits article { padding-left: 16px; border-left: 3px solid var(--forest); }
+.demo-benefits p { font-size: 14px; color: var(--muted); margin: 4px 0 0; }
+.demo-form-panel { min-width: 0; }
+.demo-public-page { max-width: 800px; margin: 30px auto; }
+.demo-public-page .formrow { text-decoration: none; color: var(--ink); }
+.demo-board { text-align: center; }
+.demo-serving { font-size: clamp(48px, 12vw, 140px); color: var(--forest); margin: 30px 0; font-weight: 800; }
+.demo-next { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin: 22px 0; }
+.demo-next span { font-size: 36px; background: var(--cream); padding: 12px 24px; border-radius: 16px; }
+@media (max-width: 860px) { .demo-concept-grid { grid-template-columns: minmax(0, 1fr); } .demo-lab .top { flex-wrap: wrap; } }
 .insight-content { display: grid; gap: 22px; }
 .insight-content .kpis { margin: 0; }
 .insight-content h2 { font-size: 24px; }

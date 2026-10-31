@@ -59,7 +59,7 @@ async function speak(text, lang) {
   }
 }
 
-export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, onArrive, onDone, qrUrl, idleMs = 60000, startAt = "welcome", preferChat = false, initialAnswers = {} } = {}) {
+export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, onArrive, onDone, qrUrl, idleMs = 60000, startAt = "welcome", preferChat = false, initialAnswers = {}, demo = false } = {}) {
   const fields = config.steps.flatMap((s) => s.fields);
   const phone = mode === "phone";
   let s;
@@ -93,7 +93,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   }
   const visibleFields = () => (s.screen === "review" ? fields : s.screen === "form" ? config.steps[s.step].fields : []);
 
-  const aiBar = () => `
+  const aiBar = () => demo ? '<div class="ai-bar"><button class="ai-btn" data-go="demo-fill">Fill sample answers</button><span class="muted small">Local demo. No microphone, camera or AI requests.</span></div>' : `
     <div class="ai-bar">
       <button class="ai-btn" data-go="chat">Talk to the assistant</button>
       <button class="ai-btn" data-go="scan">Scan a card</button>
@@ -345,6 +345,10 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     if (!go) return;
     bump();
     s.error = "";
+    if (go === "demo-fill" && demo) {
+      for (const f of fields) s.answers[f.id] = f.type === "checkbox" ? true : f.type === "select" ? f.options[0] : f.type === "date" ? new Date().toISOString().slice(0, 10) : f.type === "number" ? (/height/i.test(f.label) ? 170 : /weight/i.test(f.label) ? 70 : 28) : f.type === "email" ? "alex@example.com" : f.type === "tel" ? "555-0100" : /name/i.test(f.label) ? "Alex Demo" : "Sample only";
+      return draw();
+    }
     if (go === "welcome") return reset();
     if (go === "code") { s.screen = "code"; return draw(); }
     if (go === "arrive") {
