@@ -70,6 +70,36 @@ claude mcp add --transport http formify https://getformify.pages.dev/mcp
 ```
 Then ask Claude: "Find a ski rental on Formify and check me in for tomorrow."
 
+## Live CRM insights
+
+Business > Insights reads live D1 records for the selected location, refreshes every
+30 seconds while visible, and supports 7-, 30- and 90-day windows. It shows visit
+volume and completion, identified customer cohorts, wait times, payment records,
+no-shows, private feedback, check-in channels and anonymous form activity. Follow-up
+cards and a ticket list highlight unread messages, deletion requests, unpaid visits,
+low ratings and pickups ready to complete. Actions open Live for staff to review;
+no customer messages are sent automatically.
+
+`GET /api/kiosks/:id/insights?days=30` requires an owner or manager of that business.
+Queries exclude expired and future visit records, keep data isolated by location,
+and aggregate customer IDs without returning form answers. Charts use UTC and
+include partial days. Repeat customers are signed-in accounts with multiple visit
+records in retained history; anonymous visits are not counted as distinct customers.
+Previous-period comparisons appear only when the full previous period is within
+retention and the location already existed. Missing averages show no value rather
+than a fabricated zero.
+
+Payments are CAD amounts recorded against visits created in the selected period,
+including counter entries and demo/test transactions. Deposits are separate from
+final totals. Anonymous event counts are not presented as a session conversion
+rate, and rebook clicks are not confirmed bookings. CSV export now honors both
+the selected period and the form's retention setting.
+
+No new analytics migration is needed beyond the existing schema through migration
+009. Document import separately requires migration 010 below. SQL tests execute
+the production queries against SQLite with migrated fixtures covering period
+boundaries, business isolation, customer cohorts and follow-up counts.
+
 ## Deploy
 
 ### Document import
@@ -104,7 +134,7 @@ Local contract tests use mocked AI responses; they do not measure live extractio
 quality. Run them with Node 22+ and Python 3:
 
 ```sh
-node --test tests/import.test.mjs
+node --test tests/*.test.mjs
 python -m unittest discover -s tests -p "*_test.py"
 ```
 

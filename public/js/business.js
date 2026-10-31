@@ -1,6 +1,7 @@
 // Formify for Business. Hash routes: #live #forms #forms/new #forms/<id> #insights #settings
 import { mountKiosk } from "/render.js";
 import { theme, setTheme } from "/js/theme.js";
+import { renderInsightsView } from "/js/insights.js";
 
 const root = document.getElementById("root");
 const $ = (s, el = document) => el.querySelector(s);
@@ -581,31 +582,9 @@ async function renderPageEditor() {
 }
 
 // ---------- Insights ----------
-async function renderInsights() {
+function renderInsights() {
   if (!loc) return noLocation("insights");
-  shell("insights", `<div class="row" style="justify-content:space-between;align-items:flex-end"><h1>Insights</h1><a href="/api/kiosks/${loc.id}/export" class="biz-link">Export CSV</a></div><p class="muted">${esc(loc.name)} · last 30 days. Only your own visitors; nothing is sold or shared.</p><div id="ins"><p class="muted">Loading...</p></div>`);
-  const d = await api(`/api/kiosks/${loc.id}/checkins`);
-  const start = new Date(); start.setHours(0, 0, 0, 0);
-  const today = d.checkins.filter((c) => c.created_at >= start.getTime());
-  const hours = Array.from({ length: 16 }, (_, i) => today.filter((c) => new Date(c.created_at).getHours() === i + 6).length);
-  const max = Math.max(1, ...hours);
-  const f = d.funnel;
-  const finish = f.starts ? Math.round((f.checkins / Math.max(f.starts, f.checkins)) * 100) : null;
-  const noShows = d.checkins.filter((c) => c.status === "no-show").length;
-  $("#ins").innerHTML = `${goalCard(d.goal)}<div class="kpis">${[[f.views, "page views"], [f.starts, "started a check-in"], [f.checkins, "checked in"], [finish === null ? "–" : `${finish}%`, "finish rate"]].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
-    <div class="grid2" style="gap:22px">
-      <div class="panel"><h2 style="font-size:24px">Ease Score</h2>
-        <div class="score" style="--b:var(--forest)"><b style="font-size:52px">${d.ease.avg ? d.ease.avg.toFixed(1) : "–"}</b><span>/ 5 · ${d.ease.count} ratings</span></div>
-        <p class="muted small">How easy visitors said checking in was. Comments are private to you.</p>
-        <ul class="audit">${d.feedback.map((x) => `<li><span class="stars">${x.score}/5</span> · ${esc(x.ticket)} · ${time(x.at)}${x.comment ? `<div>${esc(x.comment)}</div>` : ""}</li>`).join("")}</ul></div>
-      <div style="display:grid;gap:22px">
-        <div class="panel"><h2 style="font-size:24px">Check-ins by hour (today)</h2><div class="bars">${hours.map((h, i) => `<div title="${i + 6}:00 · ${h}" style="height:${(h / max) * 100}%;background:var(--forest)"></div>`).join("")}</div>
-          <div class="row small muted" style="justify-content:space-between"><span>6am</span><span>12pm</span><span>6pm</span></div>
-          <p class="small" style="margin:10px 0 0">${noShows ? `${noShows} no-show${noShows > 1 ? "s" : ""} in the last day.` : "No no-shows in the last day."}</p></div>
-        <div class="panel"><h2 style="font-size:24px">Audit log</h2><p class="muted small">Check-in data is deleted after ${d.config.retention_days} days.</p>
-          <ul class="audit">${d.audit.map((a) => `<li><strong>${esc(a.action)}</strong> · ${time(a.at)}<div class="muted">${esc(a.detail)}</div></li>`).join("")}</ul></div>
-      </div>
-    </div>`;
+  return renderInsightsView({ shell, location: loc, api, setPoll: (timer) => { poll = timer; } });
 }
 
 // ---------- People (owner only) ----------

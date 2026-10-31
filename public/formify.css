@@ -258,6 +258,36 @@ body.app::before {
 .unread { display: inline-block; background: var(--clay); color: #fff; font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
 
 /* Playbooks */
+/* Business analytics */
+.insight-content { display: grid; gap: 22px; }
+.insight-content .kpis { margin: 0; }
+.insight-content h2 { font-size: 24px; }
+.insight-content h3 { font-size: 17px; }
+.insight-controls label { margin: 0; }
+.insight-controls select { width: auto; }
+.insight-coverage { border-left: 4px solid var(--forest); padding: 10px 16px; background: var(--cream); border-radius: 0 12px 12px 0; }
+.insight-kpis .v { font-size: clamp(28px, 3vw, 40px); overflow-wrap: anywhere; }
+.insight-grid { gap: 22px; }
+.insight-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+.insight-actions article { background: var(--cream); border-radius: 14px; padding: 16px; }
+.insight-actions p { font-size: 14px; margin: 8px 0; }
+.insight-chart { display: flex; gap: 3px; height: 150px; align-items: end; border-bottom: 1px solid var(--line); padding-top: 8px; }
+.insight-chart > div { flex: 1; min-width: 0; background: var(--forest); border-radius: 4px 4px 0 0; }
+.insight-content details { margin-top: 18px; }
+.insight-content summary { cursor: pointer; font-size: 14px; font-weight: 650; }
+.insight-table { overflow-x: auto; max-width: 100%; }
+.insight-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.insight-table th, .insight-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.insight-table th { font-weight: 650; }
+.insight-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; border-bottom: 1px solid var(--line); padding: 12px 0; }
+.insight-stat strong { text-align: right; }
+.insight-stat small { color: var(--muted); font-weight: 500; }
+.insight-rating { font-family: var(--serif); font-size: 48px; }
+.insight-rating span { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 14px; color: var(--muted); margin-left: 12px; }
+.insight-comment { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; }
+.insight-empty h2 { font-size: 24px; }
+.insight-empty p { margin-bottom: 12px; }
+@media (max-width: 620px) { .insight-controls { width: 100%; } .insight-table th, .insight-table td { padding: 10px 7px; } }
 .import-notes { background: var(--cream); border: 1px solid var(--clay); border-radius: 14px; padding: 14px; margin: 14px 0; }
 .import-notes ul { padding-left: 20px; font-size: 14px; }
 .import-notes li { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
