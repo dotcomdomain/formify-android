@@ -67,7 +67,7 @@ function shell(active, inner) {
       <a class="brand" href="#live"><span class="mark">Form<i>ify</i></span><span class="tag">Business</span></a>
       ${me.locations.length ? `<label class="small" style="color:#9fb5a8;margin:0">Location</label>
         <select id="locsel">${me.locations.map((l) => `<option value="${l.id}"${l.id === loc?.id ? " selected" : ""}>${esc(l.name)}</option>`).join("")}</select>` : ""}
-      <nav>${[["live", "Live", alerts], me.perms.forms && ["forms", "Forms"], me.perms.insights && ["insights", "Insights"], me.perms.staff && ["people", "People"], ["settings", "Settings"]].filter(Boolean)
+      <nav>${[["live", "Live", alerts], me.perms.forms && ["page", "Page"], me.perms.forms && ["forms", "Forms"], me.perms.insights && ["insights", "Insights"], me.perms.staff && ["people", "People"], ["settings", "Settings"]].filter(Boolean)
         .map(([k, l, c]) => `<button data-nav="${k}" class="${active === k ? "on" : ""}">${l}${c ? `<span class="count">${c}</span>` : ""}</button>`).join("")}</nav>
       <div class="who">${esc(me.member.name)} · ${esc(me.member.role)}<br>${esc(me.business.name)}
         <div><button class="theme-dot" id="themeBtn" title="Switch theme" aria-label="Switch colour theme"></button></div></div>
@@ -85,6 +85,7 @@ function route() {
   const [tab, id] = (location.hash.slice(1) || "live").split("/");
   if (tab === "forms" && me.perms.forms) return id ? renderBuilder(id === "new" ? null : id) : renderForms();
   if (tab === "insights" && me.perms.insights) return renderInsights();
+  if (tab === "page" && me.perms.forms) return renderPageEditor();
   if (tab === "people" && me.perms.staff) return renderPeople();
   if (tab === "settings") return renderSettings();
   return renderLive();
@@ -174,7 +175,7 @@ function renderForms() {
       <a href="#forms/new"><button class="btn-big">New form</button></a></div>
     <div class="cards" style="margin-top:22px">${me.locations.map((l) => `<div class="loccard" style="--b:${esc(l.brand_color)}">
       <h3>${esc(l.name)}</h3><div class="muted small" style="text-transform:capitalize">${esc(l.business_type)}${l.city ? ` · ${esc(l.city)}` : ""} · Ease ${l.ease.avg ?? "–"}</div>
-      <div class="links"><a href="#forms/${l.id}">Edit form</a><a href="/kiosk.html?id=${l.id}" target="_blank">Kiosk</a><a href="/go.html?id=${l.id}" target="_blank">Phone link</a><a href="/#b/${l.id}" target="_blank">Public page</a><button data-qr="${l.id}">QR code</button></div>
+      <div class="links"><a href="#forms/${l.id}">Edit form</a><a href="/kiosk.html?id=${l.id}" target="_blank">Kiosk</a><a href="/go.html?id=${l.id}" target="_blank">Phone link</a><a href="${me.business.slug ? `/p/${me.business.slug}` : `/#b/${l.id}`}" target="_blank">Public page</a><button data-qr="${l.id}">QR code</button></div>
       <div data-qrbox="${l.id}" style="margin-top:12px"></div></div>`).join("") || '<div class="empty panel" style="grid-column:1/-1"><b>No forms yet</b>Create one in a sentence.</div>'}</div>`);
   root.querySelectorAll("[data-qr]").forEach((b) => b.onclick = () => {
     const box = root.querySelector(`[data-qrbox="${b.dataset.qr}"]`);
@@ -276,6 +277,88 @@ function preview() {
   const host = document.createElement("div");
   $("#preview").replaceChildren(host);
   mountKiosk(host, draft, { mode: "preview", onSubmit: async () => ({ ticket: `${draft.ticket_prefix}${String(++pn).padStart(3, "0")}`, ahead: 2, wait_minutes: 2 * draft.avg_service_minutes }) });
+}
+
+// ---------- Page: one public page with every form and the business's links ----------
+async function renderPageEditor() {
+  shell("page", `<h1>Your page</h1><p class="muted">One link for your Instagram bio, Google listing and door. It shows all your forms, your links and your live wait.</p><div id="pg"><p class="muted">Loading...</p></div>`);
+  const d = await api("/api/biz/page");
+  const pr = d.profile;
+  const input = (id, label, val, attrs = "") => `<div><label for="${id}">${label}</label><input id="${id}" value="${esc(val || "")}" ${attrs}></div>`;
+  $("#pg").innerHTML = `<div class="grid2 pageedit" style="gap:22px;margin-top:16px">
+    <form class="panel" id="pgform">
+      <h2 style="font-size:24px">About</h2>
+      ${input("pg_name", "Business name", d.name, "required")}
+      <label for="pg_slug">Page link</label>
+      <div class="row" style="gap:6px;flex-wrap:nowrap"><span class="muted small" style="white-space:nowrap">${esc(location.host)}/p/</span><input id="pg_slug" value="${esc(d.slug)}" pattern="[a-z0-9-]{3,40}" required></div>
+      ${input("pg_tagline", "Tagline", pr.tagline, 'placeholder="Fades, beard trims and walk-ins since 2015"')}
+      <label for="pg_about">About</label><textarea id="pg_about" rows="3">${esc(pr.about)}</textarea>
+      <div class="grid2" style="gap:12px">${input("pg_address", "Address", pr.address)}${input("pg_city", "City", pr.city, 'placeholder="Hamilton, ON"')}${input("pg_phone", "Phone", pr.phone, 'type="tel"')}<div><label for="pg_color">Colour</label><input id="pg_color" type="color" value="${esc(pr.brand_color || "#1f4d3a")}" style="height:44px;padding:4px"></div></div>
+      <label for="pg_hours">Hours</label><textarea id="pg_hours" rows="2" placeholder="Mon-Fri 9-7, Sat 9-5">${esc(pr.hours)}</textarea>
+      <h2 style="font-size:24px;margin-top:22px">Links</h2>
+      <div class="grid2" style="gap:12px">${input("ln_instagram", "Instagram", pr.links.instagram, 'placeholder="@yourbusiness"')}${input("ln_tiktok", "TikTok", pr.links.tiktok, 'placeholder="@yourbusiness"')}${input("ln_facebook", "Facebook page link", pr.links.facebook)}${input("ln_google_reviews", "Google reviews link", pr.links.google_reviews, 'placeholder="g.page/r/..."')}${input("ln_website", "Website", pr.links.website)}</div>
+      <p class="muted small">Review links are shown to every visitor, whatever they rated.</p>
+      <h2 style="font-size:24px;margin-top:22px">Forms on your page</h2>
+      <div class="formlist" id="pgforms"></div>
+      <div class="row" style="margin-top:18px;gap:10px"><button class="btn-big">Save page</button><span class="k-err small" id="pgerr"></span></div>
+    </form>
+    <div style="display:grid;gap:22px;align-content:start">
+      <div class="panel" id="pglive"></div>
+      <div class="panel"><h2 style="font-size:22px">Where to put it</h2><ul style="margin:0;padding-left:18px;line-height:1.7">
+        <li>Instagram and TikTok bio link</li><li>Google Business Profile "Website" or "Booking" link</li><li>A printed QR code on the door and counter</li><li>Booking confirmation texts and emails</li></ul></div>
+    </div>
+  </div>`;
+
+  let forms = d.forms.map((f) => ({ ...f }));
+  const drawForms = () => {
+    $("#pgforms").innerHTML = forms.map((f, i) => `<div class="formrow" style="${f.listed ? "" : "opacity:.55"}">
+      <div style="flex:1;min-width:0"><input data-fl="${i}" value="${esc(f.label)}" placeholder="${esc(f.fallback)}" aria-label="Form name">
+        <div class="muted small" style="margin-top:4px">${esc(f.subtitle || "")}</div>
+        <label class="check small" style="margin:6px 0 0;font-weight:500"><input type="checkbox" data-fv="${i}" ${f.listed ? "checked" : ""} style="width:auto"> Show on page and in search</label></div>
+      <div class="handle"><button type="button" data-up="${i}" aria-label="Move up" ${i ? "" : "disabled"}>&uarr;</button><button type="button" data-dn="${i}" aria-label="Move down" ${i < forms.length - 1 ? "" : "disabled"}>&darr;</button></div>
+    </div>`).join("") || '<p class="muted">No forms yet. <a href="#forms/new">Create one</a>.</p>';
+  };
+  drawForms();
+  $("#pgforms").addEventListener("input", (e) => {
+    if (e.target.dataset.fl) forms[+e.target.dataset.fl].label = e.target.value;
+    if (e.target.dataset.fv) { forms[+e.target.dataset.fv].listed = e.target.checked; drawForms(); }
+  });
+  $("#pgforms").addEventListener("click", (e) => {
+    const up = e.target.dataset.up, dn = e.target.dataset.dn;
+    if (up === undefined && dn === undefined) return;
+    const i = +(up ?? dn), j = up !== undefined ? i - 1 : i + 1;
+    [forms[i], forms[j]] = [forms[j], forms[i]];
+    drawForms();
+  });
+  const drawLive = (slug, published) => {
+    const url = `${location.origin}/p/${slug}`;
+    $("#pglive").innerHTML = published
+      ? `<h2 style="font-size:22px">Your page is live</h2><p style="word-break:break-all"><a href="${url}" target="_blank" rel="noopener">${esc(url)}</a></p>
+         <div class="row" style="gap:8px"><a href="${url}" target="_blank" rel="noopener"><button type="button">Open page</button></a><button type="button" class="btn-alt" id="pgcopy">Copy link</button></div><div id="pgqr" style="margin-top:14px"></div>`
+      : `<h2 style="font-size:22px">Not published yet</h2><p class="muted" style="margin:0">Save to publish your page at ${esc(location.host)}/p/${esc(slug)}.</p>`;
+    if (published) {
+      new window.QRCode($("#pgqr"), { text: url, width: 150, height: 150 });
+      $("#pgcopy").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { toast(url); } };
+    }
+  };
+  drawLive(d.slug, d.published);
+
+  $("#pgform").addEventListener("submit", async (e) => {
+    e.preventDefault(); $("#pgerr").textContent = "";
+    const v = (id) => $(`#${id}`).value;
+    try {
+      const r = await api("/api/biz/page", { method: "POST", body: {
+        name: v("pg_name"), slug: v("pg_slug").toLowerCase(),
+        profile: { tagline: v("pg_tagline"), about: v("pg_about"), address: v("pg_address"), city: v("pg_city"), phone: v("pg_phone"), hours: v("pg_hours"), brand_color: v("pg_color"),
+          links: { instagram: v("ln_instagram"), tiktok: v("ln_tiktok"), facebook: v("ln_facebook"), google_reviews: v("ln_google_reviews"), website: v("ln_website") } },
+        forms: forms.map((f) => ({ id: f.id, label: f.label, listed: f.listed }))
+      } });
+      toast("Page saved");
+      await loadMe();
+      renderPageEditor();
+      drawLive(r.slug, true);
+    } catch (err) { $("#pgerr").textContent = err.message; }
+  });
 }
 
 // ---------- Insights ----------

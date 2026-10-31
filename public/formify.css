@@ -224,3 +224,20 @@ body.app::before {
 .theme-dot:hover { transform: rotate(180deg); filter: none; }
 .sidebar .theme-dot { border-color: rgba(255,255,255,.3); margin-top: 10px; }
 .topbar .right { display: flex; align-items: center; gap: 14px; }
+
+/* Business page */
+.socrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; position: relative; z-index: 1; }
+.soc { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 999px; background: rgba(255,255,255,.16); color: #fff; text-decoration: none; font-weight: 650; font-size: 14px; border: 1px solid rgba(255,255,255,.28); transition: background .15s var(--ease), transform .15s var(--ease); }
+.soc:hover { background: rgba(255,255,255,.28); transform: translateY(-1px); }
+.pageinfo { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-top: 6px; }
+.pageinfo > div { display: flex; flex-direction: column; gap: 3px; background: var(--cream); border-radius: 14px; padding: 12px 14px; }
+.pageinfo a { color: var(--ink); font-weight: 600; }
+.formlist { display: grid; gap: 10px; }
+.formrow { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--line); border-left: 6px solid var(--b, var(--forest)); border-radius: 16px; background: #fff; animation: rise .4s var(--ease) both; transition: transform .15s var(--ease), box-shadow .15s var(--ease); }
+.formrow:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.formrow b { font-family: var(--serif); font-weight: 400; font-size: 20px; }
+.formacts { display: flex; gap: 8px; flex: none; }
+@media (max-width: 620px) { .formrow { flex-direction: column; align-items: stretch; } .formacts { flex-direction: column; } .formacts button { width: 100%; } }
+.pageedit .formrow { cursor: default; }
+.pageedit .handle { display: flex; flex-direction: column; gap: 4px; }
+.pageedit .handle button { padding: 4px 9px; font-size: 13px; background: var(--cream); color: var(--ink); border: 1px solid var(--line); }

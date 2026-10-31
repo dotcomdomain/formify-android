@@ -3,12 +3,12 @@ import { ownsKiosk, json } from "../../../lib/auth.js";
 import { sanitize } from "../../../lib/config.js";
 
 export async function onRequestGet({ params, env }) {
-  const row = await env.DB.prepare("SELECT config FROM kiosks WHERE id = ?").bind(params.id).first();
+  const row = await env.DB.prepare("SELECT k.config, b.slug, b.name FROM kiosks k LEFT JOIN businesses b ON b.id = k.owner_id WHERE k.id = ?").bind(params.id).first();
   if (!row) return Response.json({ error: "Kiosk not found" }, { status: 404 });
   const config = JSON.parse(row.config);
   const ease = await easeFor(env, params.id);
   const { waiting } = await env.DB.prepare("SELECT COUNT(*) AS waiting FROM checkins WHERE kiosk_id = ? AND status = 'waiting'").bind(params.id).first();
-  return Response.json({ id: params.id, config, business: { ...publicBusiness(params.id, config, ease), waiting } });
+  return Response.json({ id: params.id, config, business: { ...publicBusiness(params.id, config, ease), waiting, page_slug: row.slug || null, page_name: row.name || null } });
 }
 
 // Owner edits a published form. The change is logged.

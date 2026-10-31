@@ -56,10 +56,11 @@ const track = (id, type) => fetch(`/api/kiosks/${encodeURIComponent(id)}/events`
 // ---------- Router ----------
 function route() {
   const [tab, id, extra] = (location.hash.slice(1) || "search").split("/");
-  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (tab === "b" || tab === "checkin" ? "search" : tab)));
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (["b", "biz", "checkin"].includes(tab) ? "search" : tab)));
   window.scrollTo({ top: 0 });
   if (tab === "assistant") return renderAssistant();
   if (tab === "you") return renderYou();
+  if (tab === "biz" && id) return renderPage(id);
   if (tab === "b" && id) return renderBusiness(id);
   if (tab === "checkin" && id) return renderCheckin(id, extra === "chat");
   return renderSearch();
@@ -96,18 +97,85 @@ async function loadResults() {
   const box = $("#results");
   if (!box) return;
   const { businesses } = await api(`/api/directory?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}`);
-  if (!businesses.length) { box.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Nothing here yet</b>Try another word, or ask the <a href="#assistant">assistant</a>.</div>`; return; }
-  box.innerHTML = businesses.map((b, i) => `
-    <a class="bcard" href="#b/${b.id}" style="--b:${esc(b.brand_color)};animation-delay:${i * 60}ms">
-      ${i === 0 && b.checkins_month ? '<span class="badge" style="align-self:flex-start;margin-bottom:6px">Most used</span>' : ""}
-      <h3>${esc(b.name)}</h3>
-      <div class="meta">${esc(b.business_type)}${b.city ? ` · ${esc(b.city)}` : ""}</div>
+  // Group forms by the business that owns them, keeping search order (most used first).
+  const groups = [];
+  const byKey = new Map();
+  for (const f of businesses) {
+    const key = f.page_slug || f.id;
+    if (!byKey.has(key)) { const g = { key, slug: f.page_slug, name: f.page_slug ? f.page_name : f.name, lead: f, forms: [] }; byKey.set(key, g); groups.push(g); }
+    byKey.get(key).forms.push(f);
+  }
+  if (!groups.length) { box.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Nothing here yet</b>Try another word, or ask the <a href="#assistant">assistant</a>.</div>`; return; }
+  box.innerHTML = groups.map((g, i) => {
+    const b = g.lead;
+    const rated = g.forms.filter((f) => f.ease.count);
+    const n = rated.reduce((s, f) => s + f.ease.count, 0);
+    const avg = n ? rated.reduce((s, f) => s + f.ease.avg * f.ease.count, 0) / n : null;
+    const waiting = g.forms.reduce((s, f) => s + (f.waiting || 0), 0);
+    const month = g.forms.reduce((s, f) => s + (f.checkins_month || 0), 0);
+    return `<a class="bcard" href="${g.slug ? `#biz/${g.slug}` : `#b/${b.id}`}" style="--b:${esc(b.brand_color)};animation-delay:${i * 60}ms">
+      ${i === 0 && month ? '<span class="badge" style="align-self:flex-start;margin-bottom:6px">Most used</span>' : ""}
+      <h3>${esc(g.name)}</h3>
+      <div class="meta">${esc(b.business_type)}${b.city ? ` · ${esc(b.city)}` : ""}${g.forms.length > 1 ? ` · <span style="text-transform:none">${g.forms.length} forms</span>` : ""}</div>
       <div class="foot">
-        <div class="score">${b.ease.avg ? `<b>${b.ease.avg.toFixed(1)}</b><span>Ease · ${b.ease.count}</span>` : '<span>New on Formify</span>'}</div>
-        <span class="waitpill">${b.waiting ? `${b.waiting} waiting` : "No wait"}</span>
+        <div class="score">${avg ? `<b>${avg.toFixed(1)}</b><span>Ease · ${n}</span>` : '<span>New on Formify</span>'}</div>
+        <span class="waitpill">${waiting ? `${waiting} waiting` : "No wait"}</span>
       </div>
-      ${b.checkins_month ? `<div class="meta" style="text-transform:none;font-size:13px">${b.checkins_month} check-ins this month</div>` : ""}
-    </a>`).join("");
+      ${month ? `<div class="meta" style="text-transform:none;font-size:13px">${month} check-ins this month</div>` : ""}
+    </a>`;
+  }).join("");
+}
+
+// ---------- Business page: profile, socials, every form ----------
+const ICON = {
+  instagram: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>',
+  tiktok: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M14 3h3a4 4 0 0 0 4 4v3a7 7 0 0 1-4-1.3V15a6 6 0 1 1-6-6v3.2a2.8 2.8 0 1 0 3 2.8z"/></svg>',
+  facebook: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M14 8h3V4h-3a4 4 0 0 0-4 4v2H7v4h3v7h4v-7h3l1-4h-4V8.5a.5.5 0 0 1 .5-.5z"/></svg>',
+  google_reviews: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 21l1.6-7L2 9.2l7.1-.6z"/></svg>',
+  website: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>'
+};
+const LINK_LABEL = { instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", google_reviews: "Google reviews", website: "Website" };
+
+async function renderPage(slug) {
+  view.innerHTML = `<section class="view"><p class="muted">Loading...</p></section>`;
+  let p;
+  try { p = await api(`/api/page/${encodeURIComponent(slug)}`); } catch { view.innerHTML = `<div class="empty"><b>Page not found</b><a href="#search">Back to search</a></div>`; return; }
+  const pr = p.profile;
+  p.forms.forEach((f) => track(f.id, "view"));
+  const links = Object.entries(pr.links).filter(([, u]) => u)
+    .map(([k, u]) => `<a class="soc" href="${esc(u)}" target="_blank" rel="noopener">${ICON[k]}<span>${LINK_LABEL[k]}</span></a>`).join("");
+  const waiting = p.forms.reduce((s, f) => s + f.waiting, 0);
+  view.innerHTML = `<section class="view" style="max-width:860px;margin:0 auto">
+    <button class="back" onclick="history.back()">&larr; Back</button>
+    <article class="sheet" style="--b:${esc(pr.brand_color)}">
+      <div class="sheet-head" style="padding-bottom:26px">
+        <div class="meta">${esc(p.business_type)}${pr.city ? ` · ${esc(pr.city)}` : ""}</div>
+        <h2>${esc(p.name)}</h2>
+        ${pr.tagline ? `<div style="font-size:18px;opacity:.92">${esc(pr.tagline)}</div>` : ""}
+        ${links ? `<div class="socrow">${links}</div>` : ""}
+      </div>
+      <div class="sheet-body">
+        <div class="statrow">
+          <div><div class="v">${p.ease.avg ? p.ease.avg.toFixed(1) : "–"}</div><div class="l">Ease Score${p.ease.count ? ` · ${p.ease.count} ratings` : ""}</div></div>
+          <div><div class="v">${waiting}</div><div class="l">waiting now</div></div>
+          <div><div class="v">${p.forms.length}</div><div class="l">form${p.forms.length === 1 ? "" : "s"} you can fill ahead</div></div>
+        </div>
+        ${pr.about ? `<p style="font-size:16.5px;max-width:620px">${esc(pr.about)}</p>` : ""}
+        <div class="pageinfo">
+          ${pr.address ? `<div><span class="muted small">Address</span><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(pr.address)}" target="_blank" rel="noopener">${esc(pr.address)}</a></div>` : ""}
+          ${pr.hours ? `<div><span class="muted small">Hours</span><span style="white-space:pre-line">${esc(pr.hours)}</span></div>` : ""}
+          ${pr.phone ? `<div><span class="muted small">Phone</span><a href="tel:${esc(pr.phone.replace(/[^0-9+]/g, ""))}">${esc(pr.phone)}</a></div>` : ""}
+        </div>
+        <h3 style="font-family:var(--serif);font-weight:400;font-size:26px;margin:26px 0 12px">Fill in before you arrive</h3>
+        <div class="formlist">${p.forms.map((f, i) => `
+          <div class="formrow" style="--b:${esc(f.brand_color)};animation-delay:${i * 60}ms">
+            <div><b>${esc(f.label)}</b><div class="muted small">${esc(f.subtitle || "")}</div>
+              <div class="small" style="margin-top:6px">${f.waiting ? `<span class="waitpill">${f.waiting} waiting · ~${f.wait_minutes} min</span>` : '<span class="waitpill">No wait</span>'}${f.ease.avg ? ` <span class="muted">Ease ${f.ease.avg.toFixed(1)}</span>` : ""}</div></div>
+            <div class="formacts"><a href="#checkin/${f.id}/chat"><button>With the assistant</button></a><a href="#checkin/${f.id}"><button class="btn-alt">Fill it myself</button></a></div>
+          </div>`).join("") || '<p class="muted">No forms are open right now.</p>'}</div>
+      </div>
+    </article>
+  </section>`;
 }
 
 // ---------- Business page ----------
@@ -136,6 +204,7 @@ async function renderBusiness(id) {
         </div>
         <p class="muted small" style="margin:12px 0 0">${saved ? `${saved} detail${saved > 1 ? "s" : ""} from <a href="#you">your info</a> will be filled in for you. ` : ""}Ease Score is how easy visitors found checking in here.</p>
         ${links ? `<div class="linkbtns">${links}</div>` : ""}
+        ${b.page_slug ? `<p style="margin:16px 0 0"><a href="#biz/${esc(b.page_slug)}">See everything from ${esc(b.page_name || b.name)} &rarr;</a></p>` : ""}
       </div>
     </article>
   </section>`;
