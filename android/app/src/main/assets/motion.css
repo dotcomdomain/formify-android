@@ -1,0 +1,91 @@
+/* Android interaction polish. Uses Formify's existing theme tokens and layout. */
+:root {
+  --fm-settle: cubic-bezier(.22, 1, .36, 1);
+  --fm-press: cubic-bezier(.2, .75, .3, 1);
+  --fm-route-x: 0px;
+}
+html { -webkit-tap-highlight-color: transparent; }
+body button, body a.bcard, body a.biz, body .formrow, body .soc {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+body button, body .bcard, body a.biz, body .soc, body .formrow {
+  transition: transform 180ms var(--fm-settle), box-shadow 180ms var(--fm-settle),
+    background-color 180ms ease, border-color 180ms ease, color 150ms ease, filter 150ms ease;
+}
+body button:active:not(:disabled), body button.fm-pressed:not(:disabled) {
+  transform: scale(.965);
+  transition-duration: 70ms;
+  filter: brightness(.96);
+}
+body .bcard:active, body .bcard.fm-pressed, body a.biz.fm-pressed,
+body .soc.fm-pressed, body a.formrow.fm-pressed {
+  transform: scale(.983);
+  box-shadow: 0 2px 6px -3px rgba(29,42,36,.16);
+  transition-duration: 85ms;
+}
+body :is(button, a):focus-visible {
+  outline: 2px solid var(--forest, #1f4d3a);
+  outline-offset: 2px;
+}
+#view > .view, #root .biz > main, #root > .auth {
+  animation: fm-arrive 260ms var(--fm-settle) both;
+}
+@keyframes fm-arrive {
+  from { opacity: 0; transform: translate3d(var(--fm-route-x), 9px, 0); }
+  to { opacity: 1; transform: none; }
+}
+/* Short stagger stays readable even for a long directory. */
+body .bcard {
+  animation: fm-card-in 280ms var(--fm-settle) backwards;
+  animation-delay: calc(min(var(--fm-card-order, 0), 5) * 28ms) !important;
+}
+@keyframes fm-card-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to { opacity: 1; transform: none; }
+}
+/* The highlight moves beneath the labels; the navigation itself stays still. */
+body .tabs.fm-motion-tabs { isolation: isolate; }
+body .tabs.fm-motion-tabs button { z-index: 1; background: transparent; }
+body .tabs.fm-motion-tabs button.on { background: transparent; color: #fff; }
+.fm-tab-indicator {
+  position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0;
+  border-radius: 999px; background: var(--forest, #1f4d3a);
+  transition: transform 270ms var(--fm-settle), width 270ms var(--fm-settle),
+    height 180ms ease, background-color 180ms ease;
+}
+.fm-tab-indicator.fm-snap { transition: none; }
+.fm-tap-wave {
+  position: fixed; pointer-events: none; z-index: 2147483646;
+  overflow: hidden; contain: strict;
+}
+.fm-tap-wave > span {
+  position: absolute; display: block; border-radius: 50%;
+  background: currentColor; opacity: 0;
+  animation: fm-wave 380ms var(--fm-settle) forwards;
+}
+@keyframes fm-wave {
+  from { opacity: .13; transform: scale(.12); }
+  to { opacity: 0; transform: scale(1); }
+}
+@media (hover: none) {
+  body .bcard:hover, body a.biz:hover, body .formrow:hover, body .soc:hover { transform: none; }
+  body .bcard.fm-pressed, body a.biz.fm-pressed, body a.formrow.fm-pressed { transform: scale(.983); }
+  body button:hover { filter: none; }
+  body .theme-dot:hover { transform: none; }
+  body button.fm-pressed { transform: scale(.965); }
+}
+/* Disable decorative movement, including the website's original animations. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  body button.fm-pressed, body button:active, body .bcard.fm-pressed,
+  body a.biz.fm-pressed, body a.formrow.fm-pressed { transform: none !important; }
+  .fm-tap-wave { display: none; }
+}

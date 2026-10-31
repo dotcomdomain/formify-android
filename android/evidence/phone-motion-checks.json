@@ -1,0 +1,12 @@
+{
+  "passed": 7,
+  "checks": [
+    "single motion stylesheet",
+    "assistant: press, navigation, highlight alignment and page direction",
+    "visits: press, navigation, highlight alignment and page direction",
+    "search: press, navigation, highlight alignment and page direction",
+    "press and ripple elements clean up",
+    "reduced motion suppresses movement and ripples",
+    "rapid taps leave one highlight on the final route"
+  ]
+}

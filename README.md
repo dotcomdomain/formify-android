@@ -1,4 +1,17 @@
-# Formify (P2P Hacks 2026)
+# Formify for Android
+
+Android app, web client and Cloudflare backend for Formify, with a recorded demo and device verification.
+
+- [Download the latest Android APK and demo](https://github.com/dotcomdomain/formify-android/releases/latest)
+- [Android build and emulator instructions](android/README.md)
+- [UI and device verification](android/evidence/verification.md)
+- [Demo recording and editing source](demo/README.md)
+
+Based on the original [Formify project](https://github.com/danieledel288-code/formify). The original web application's documentation follows.
+
+## Android app
+
+The Android project lives in [`android/`](android/README.md). It brings the existing mobile Formify experience to Android with native navigation, photo uploads, microphone permissions, downloads and offline retry. See its README for build and emulator instructions.
 
 **Fortify your business with Formify.** From searching to filling to the front desk to the cashier: one simple pipeline between businesses and their customers.
 

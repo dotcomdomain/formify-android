@@ -1,0 +1,24 @@
+/* Animate palette tokens together so text, cards and gradients share one transition. */
+@property --bg { syntax: "<color>"; inherits: true; initial-value: #f5efe4; }
+@property --card { syntax: "<color>"; inherits: true; initial-value: #fffaf2; }
+@property --ink { syntax: "<color>"; inherits: true; initial-value: #1d2a24; }
+@property --muted { syntax: "<color>"; inherits: true; initial-value: #6b6f66; }
+@property --line { syntax: "<color>"; inherits: true; initial-value: #e6dccb; }
+@property --brand { syntax: "<color>"; inherits: true; initial-value: #1f4d3a; }
+@property --forest { syntax: "<color>"; inherits: true; initial-value: #1f4d3a; }
+@property --forest-2 { syntax: "<color>"; inherits: true; initial-value: #2e6b52; }
+@property --forest-ink { syntax: "<color>"; inherits: true; initial-value: #0f2a1f; }
+@property --clay { syntax: "<color>"; inherits: true; initial-value: #d4673a; }
+@property --sun { syntax: "<color>"; inherits: true; initial-value: #f2c14e; }
+@property --paper { syntax: "<color>"; inherits: true; initial-value: #fffaf2; }
+@property --cream { syntax: "<color>"; inherits: true; initial-value: #f5efe4; }
+@property --sand { syntax: "<color>"; inherits: true; initial-value: #ece2d0; }
+@property --fm-glow-a { syntax: "<color>"; inherits: true; initial-value: rgba(242,193,78,.22); }
+@property --fm-glow-b { syntax: "<color>"; inherits: true; initial-value: rgba(46,107,82,.12); }
+:root.fm-theme-ready { transition: --bg 340ms ease, --card 340ms ease, --ink 340ms ease, --muted 340ms ease, --line 340ms ease, --brand 340ms ease, --forest 340ms ease, --forest-2 340ms ease, --forest-ink 340ms ease, --clay 340ms ease, --sun 340ms ease, --paper 340ms ease, --cream 340ms ease, --sand 340ms ease, --fm-glow-a 340ms ease, --fm-glow-b 340ms ease; }
+:root[data-theme="blue"] { --fm-glow-a: rgba(147,197,253,.38); --fm-glow-b: rgba(37,99,235,.12); }
+body.app, :root[data-theme="blue"] body.app {
+  background: radial-gradient(900px 500px at 92% -10%, var(--fm-glow-a), transparent 60%),
+    radial-gradient(700px 500px at -10% 30%, var(--fm-glow-b), transparent 60%), var(--cream) !important;
+}
+body.app::before { transition: opacity 340ms ease; }

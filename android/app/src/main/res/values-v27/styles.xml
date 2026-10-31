@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Formify" parent="Theme.Formify.Base">
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:navigationBarColor">#f5efe4</item>
+    </style>
+</resources>

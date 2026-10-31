@@ -1,0 +1,42 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'app.formify.android'
+    compileSdk 35
+    buildFeatures { buildConfig true }
+    defaultConfig {
+        applicationId 'app.formify.android'
+        minSdk 26
+        targetSdk 35
+        versionCode 6
+        versionName '1.0.5'
+        testInstrumentationRunner 'app.formify.android.SmokeInstrumentation'
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Configure a private release signing key before distributing through a store.
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// Keep the app's interaction fixes in the same source as the website client.
+def customerClientAssets = layout.buildDirectory.dir('generated/customerClientAssets')
+tasks.register('bundleCustomerClient', Copy) {
+    from rootProject.file('../public/js/consumer.js')
+    from rootProject.file('../public/render.js')
+    from rootProject.file('../public/assistant.css')
+    into customerClientAssets
+}
+android.sourceSets.main.assets.srcDir(customerClientAssets)
+tasks.named('preBuild').configure { dependsOn 'bundleCustomerClient' }
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.core:core:1.15.0'
+    testImplementation 'junit:junit:4.13.2'
+}

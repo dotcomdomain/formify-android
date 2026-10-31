@@ -1,0 +1,57 @@
+/* In-form assistant: compact header, readable conversation and a stable composer. */
+.sheet.fm-assistant-sheet > .sheet-head { display: none; }
+.sheet.fm-assistant-sheet > .sheet-body { padding: 0; }
+.kiosk.assistant-mode { min-height: 0; height: auto; background: var(--paper, #fffaf2); border: 0; border-radius: 0; }
+.kiosk.assistant-mode > .k-head { display: none; }
+.kiosk.assistant-mode > .k-body { padding: 0; min-height: 0; justify-content: flex-start; }
+.kiosk.assistant-mode .chat-wrap { height: 640px; min-height: 0; }
+.kiosk.phone.assistant-mode .chat-wrap { height: calc(100dvh - 195px); min-height: 240px; max-height: 760px; }
+.kiosk.assistant-mode .checkin-chat-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 18px 14px; flex: none; }
+.kiosk.assistant-mode .checkin-chat-heading > div { min-width: 0; }
+.kiosk.assistant-mode .checkin-chat-heading h2 { font-family: var(--serif, Georgia, serif); font-size: 24px; margin: 0 0 4px; line-height: 1.15; }
+.kiosk.assistant-mode .checkin-chat-heading p { color: var(--muted); font-size: 13px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kiosk.assistant-mode .chat-return { display: flex; align-items: center; gap: 6px; flex: none; min-height: 38px; padding: 8px 10px; background: var(--cream); border: 1px solid var(--line); color: var(--forest); font-size: 13px; border-radius: 12px; }
+.kiosk.assistant-mode .assistant-progress { flex: none; margin: 0 18px; font-size: 13px; max-height: 150px; overflow: auto; }
+.kiosk.assistant-mode .assistant-progress summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; list-style: none; margin: 0; padding: 10px 0; color: var(--muted); cursor: pointer; font-weight: 500; }
+.kiosk.assistant-mode .assistant-progress summary::-webkit-details-marker { display: none; }
+.kiosk.assistant-mode .progress-hint { display: flex; align-items: center; gap: 3px; color: var(--forest); font-size: 12px; }
+.kiosk.assistant-mode .progress-hint svg { width: 14px; height: 14px; transform: rotate(90deg); transition: transform 160ms ease; }
+.kiosk.assistant-mode .assistant-progress[open] .progress-hint svg { transform: rotate(-90deg); }
+.kiosk.assistant-mode .slots { gap: 6px; margin: 0 0 10px; }
+.kiosk.assistant-mode .slot { font-size: 11px; padding: 4px 8px; background: var(--cream); border-color: var(--line); color: var(--muted); }
+.kiosk.assistant-mode .slot.ok { background: var(--cream); border-color: var(--line); color: var(--forest); }
+.kiosk.assistant-mode .assistant-progress-track { flex: none; height: 3px; background: var(--sand); margin: 0 18px; border-radius: 3px; overflow: hidden; }
+.kiosk.assistant-mode .assistant-progress-track > span { height: 100%; display: block; background: var(--forest); border-radius: inherit; transition: width 220ms ease; }
+.kiosk.assistant-mode .chat { flex: 1; min-height: 0; max-height: none; padding: 18px; gap: 12px; overflow-y: auto; overscroll-behavior: contain; }
+.kiosk.assistant-mode .bubble { font-size: 16px; line-height: 1.5; padding: 12px 14px; max-width: 94%; border-radius: 18px; overflow-wrap: anywhere; }
+.kiosk.assistant-mode .bubble.assistant { background: var(--cream); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.kiosk.assistant-mode .bubble.user { background: var(--forest); color: #fff; border-bottom-right-radius: 5px; }
+.kiosk.assistant-mode .checkin-chat-footer { flex: none; padding: 12px; border-top: 1px solid var(--line); background: var(--paper); }
+.kiosk.assistant-mode .chat-in { display: grid; grid-template-columns: 42px minmax(0,1fr) 42px; gap: 8px; margin: 0; align-items: center; }
+.kiosk.assistant-mode .chat-in input { width: 100%; min-width: 0; font-size: 16px; padding: 12px 10px; background: var(--cream); border: 1px solid var(--line); border-radius: 14px; }
+.kiosk.assistant-mode .chat-in > button { display: grid; place-items: center; width: 42px; height: 44px; min-width: 0; padding: 0; border-radius: 14px; }
+.kiosk.assistant-mode .chat-in .mic { background: var(--cream); color: var(--forest); }
+.kiosk.assistant-mode .chat-in .mic.rec { background: #fee2e2; color: #991b1b; }
+.kiosk.assistant-mode .chat-in .chat-send { background: var(--forest); color: #fff; }
+.kiosk.assistant-mode .checkin-chat-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.kiosk.assistant-mode .chat-tool { display: flex; align-items: center; gap: 5px; padding: 8px 5px; min-height: 38px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; border-radius: 8px; }
+.kiosk.assistant-mode .chat-tool svg { width: 16px; height: 16px; }
+.kiosk.assistant-mode .chat-review { display: flex; align-items: center; justify-content: center; gap: 4px; margin-left: auto; padding: 9px 11px; min-height: 38px; background: var(--forest); color: #fff; font-size: 12px; border-radius: 12px; }
+.kiosk.assistant-mode .chat-review svg { width: 13px; height: 13px; }
+.kiosk.assistant-mode .chat-review:disabled { opacity: 1; color: var(--muted); background: var(--sand); }
+.kiosk.assistant-mode .checkin-chat-footer .k-err { font-size: 12px; margin: 8px 2px 0; min-height: 0; }
+.kiosk.assistant-mode .urgent-banner { margin: 0 12px 8px; padding: 10px 12px; font-size: 13px; flex: none; }
+@media (max-width: 720px) {
+  body.fm-chat-typing .topbar .tabs { visibility: hidden; opacity: 0; pointer-events: none; }
+  body.fm-chat-typing .kiosk.phone.assistant-mode .chat-wrap { height: calc(100dvh - 124px); min-height: 200px; }
+}
+@media (max-height: 520px) {
+  .kiosk.assistant-mode .checkin-chat-heading { padding: 10px 12px; }
+  .kiosk.assistant-mode .checkin-chat-heading h2 { font-size: 20px; }
+  .kiosk.assistant-mode .assistant-progress { margin: 0 12px; }
+  .kiosk.assistant-mode .assistant-progress[open] { max-height: 88px; }
+  .kiosk.assistant-mode .assistant-progress summary { padding: 7px 0; font-size: 12px; }
+  .kiosk.assistant-mode .chat { padding: 10px 12px; }
+  .kiosk.assistant-mode .checkin-chat-footer { padding: 8px; }
+  .kiosk.assistant-mode .checkin-chat-tools { margin-top: 4px; }
+}

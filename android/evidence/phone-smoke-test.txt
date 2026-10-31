@@ -1,0 +1,20 @@
+PASS 1: four customer tabs
+PASS 2: live business directory
+PASS 3: existing Formify palette
+PASS 4: business details
+PASS 5: Android back to search
+PASS 6: search empty state
+PASS 7: search recovery
+PASS 8: assistant screen
+PASS 9: visits screen
+PASS 10: profile screen
+PASS 11: local profile save
+PASS 12: blue theme
+PASS 13: warm theme restored
+PASS 14: origin-scoped native bridge
+PASS 15: profile survives reload
+PASS 16: original profile restored
+PASS 17: business sign in
+PASS 18: home restored
+
+PASS: 18 live Android integration checks.

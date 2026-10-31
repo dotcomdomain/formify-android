@@ -1,0 +1,10 @@
+{
+  "passed": 5,
+  "checks": [
+    "account mode preserves DOM, drafts, focus and scroll; labels update",
+    "each mode submits once to its matching endpoint (network stubbed)",
+    "palette interpolates through intermediate colors without rebuilding or reanimating You",
+    "header theme switch also preserves the screen and selected appearance",
+    "reduced motion disables the palette animation"
+  ]
+}

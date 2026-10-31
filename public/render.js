@@ -63,7 +63,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   let s;
   const fresh = () => ({ screen: startAt, step: 0, answers: { ...initialAnswers }, consent: false, result: null, error: "", busy: "", note: "", reply: "", language: "en", via: new Set(), remember: true, recording: false, chat: [], thinking: false, draft: "", lastVoice: false, urgent: false });
   s = fresh();
-  let idle, rec, recTimer;
+  let idle, rec, recTimer, caption;
   root.classList.add("kiosk");
   if (phone) root.classList.add("phone");
   root.style.setProperty("--brand", config.brand_color);
@@ -79,7 +79,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     return n;
   }
 
-  function collect(list) {
+  function collect(list, validate = true) {
     const form = root.querySelector("form");
     if (!form) return true;
     for (const f of list) {
@@ -87,7 +87,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       if (!el) continue;
       s.answers[f.id] = f.type === "checkbox" ? el.checked : el.value.trim();
     }
-    return form.reportValidity();
+    return !validate || form.reportValidity();
   }
   const visibleFields = () => (s.screen === "review" ? fields : s.screen === "form" ? config.steps[s.step].fields : []);
 
@@ -106,6 +106,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   };
 
   function chatHtml() {
+    const icon = (path) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
     const bubbles = s.chat.map((m) => `<div class="bubble ${m.role}">${esc(m.content)}</div>`).join("") + (s.thinking ? '<div class="bubble assistant typing"><i></i><i></i><i></i></div>' : "");
     const filled = fields.map((f) => {
       const v = s.answers[f.id];
@@ -113,29 +114,36 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       return `<span class="slot${has ? " ok" : ""}${isMissing(f) ? " need" : ""}">${esc(f.label)}</span>`;
     }).join("");
     const ready = !fields.some(isMissing);
+    const required = fields.filter((f) => f.required);
+    const completed = required.filter((f) => !isMissing(f)).length;
+    const progress = required.length ? Math.round(completed / required.length * 100) : 100;
     const saved = profileMatches();
     return `<div class="chat-wrap">
+      <header class="checkin-chat-heading"><div><h2>Form assistant</h2><p>${esc(config.name)}</p></div>
+        <button class="chat-return" data-go="toform" type="button" aria-label="Return to form">${icon("m9 5-7 7 7 7 M2 12h19")}<span>Form</span></button></header>
       ${s.urgent ? `<div class="urgent-banner">${kioskId ? "Staff have been alerted. " : ""}If this is an emergency, tell a staff member now or call 911.</div>` : ""}
-      <div class="chat" id="chatLog">${bubbles}</div>
-      <div class="slots">${filled}</div>
-      <form class="chat-in" onsubmit="return false">
-        <button class="mic${s.recording ? " rec" : ""}" data-go="chatmic" type="button" aria-label="${s.recording ? "Stop recording" : "Talk"}">${s.recording ? "Stop" : "Talk"}</button>
-        <input id="msg" placeholder="${s.recording ? "Listening..." : "Type here, or tap Talk"}" autocomplete="off" value="${esc(s.draft)}">
-        <button data-go="send" type="submit">Send</button>
+      <details class="assistant-progress"${s.fieldsOpen ? " open" : ""}><summary><span>${ready ? "Ready to review" : `${completed} of ${required.length} required details`}</span><span class="progress-hint">Details ${icon("m9 5 7 7-7 7")}</span></summary>
+        <div class="slots">${filled}</div></details>
+      <div class="assistant-progress-track" role="progressbar" aria-label="Required details completed" aria-valuemin="0" aria-valuemax="${required.length || 1}" aria-valuenow="${required.length ? completed : 1}"><span style="width:${progress}%"></span></div>
+      <div class="chat" id="chatLog" role="log" aria-live="polite" aria-busy="${s.thinking}" aria-label="Form assistant conversation">${bubbles}</div>
+      <div class="checkin-chat-footer"><form class="chat-in" onsubmit="return false">
+        <button class="mic${s.recording ? " rec" : ""}" data-go="chatmic" type="button" aria-label="${s.recording ? "Stop recording" : "Start voice input"}" title="${s.recording ? "Stop recording" : "Talk"}">${s.recording ? icon("M7 7h10v10H7z") : icon("M12 15a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v7a3 3 0 0 0 3 3Z M5 10v2a7 7 0 0 0 14 0v-2 M12 19v3 M8 22h8")}</button>
+        <input id="msg" placeholder="${s.recording ? "Listening…" : "Type a message…"}" aria-label="Message the form assistant" autocomplete="off" value="${esc(s.draft)}">
+        <button class="chat-send" data-go="send" type="submit" aria-label="Send message" title="Send"${s.thinking ? " disabled" : ""}>${icon("m5 12 7-7 7 7 M12 5v15")}</button>
       </form>
-      <div class="row" style="gap:8px;margin-top:10px">
-        <button class="ai-btn" data-go="scan" type="button">Scan a card</button>
-        ${saved ? `<button class="ai-btn" data-go="useprofile" type="button">Use my saved info (${saved})</button>` : ""}
+      <div class="checkin-chat-tools">
+        <button class="chat-tool" data-go="scan" type="button">${icon("M3 6h18v14H3z M7 6l1-3h8l1 3 M9 13a3 3 0 1 0 6 0 3 3 0 1 0-6 0")}<span>Scan a card</span></button>
+        ${saved ? `<button class="chat-tool" data-go="useprofile" type="button">Use saved info</button>` : ""}
         <input type="file" accept="image/*" capture="environment" id="scanInput" hidden>
-        <span style="flex:1"></span>
-        <button class="k-btn ghost" data-go="toform" type="button" style="margin:0">Fill the form instead</button>
-        <button class="k-btn" data-go="toreview" type="button" style="margin:0"${ready ? "" : " disabled"}>Review and check in</button>
+        <button class="chat-review" data-go="toreview" type="button"${ready ? "" : " disabled"}>Review details ${icon("m9 5 7 7-7 7")}</button>
       </div>
-      <div class="k-err">${esc(s.error)}</div>
+      ${s.error ? `<div class="k-err" role="alert">${esc(s.error)}</div>` : ""}</div>
     </div>`;
   }
 
   function draw() {
+    root.classList.toggle("assistant-mode", s.screen === "chat");
+    root.closest(".sheet")?.classList.toggle("fm-assistant-sheet", phone && s.screen === "chat");
     const helpBtn = mode === "kiosk" ? `<button class="help-btn" data-go="help">${s.helpSent ? "Staff notified" : "Need help?"}</button>` : `<span class="small" style="opacity:.85">${phone ? "Check in from your phone" : "Self check-in"}</span>`;
     const head = `<div class="k-head"><span>${esc(config.name)}</span>${helpBtn}</div>`;
     let body = "";
@@ -182,6 +190,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     root.innerHTML = head + `<div class="k-body">${body}</div>` + busy;
     if (s.screen === "welcome" && mode === "kiosk" && qrUrl && window.QRCode) new window.QRCode(root.querySelector("#qr"), { text: qrUrl, width: 120, height: 120 });
     root.querySelector("#scanInput")?.addEventListener("change", onScan);
+    root.querySelector(".assistant-progress")?.addEventListener("toggle", (event) => { s.fieldsOpen = event.target.open; });
     if (s.screen === "code") root.querySelector("#code")?.focus();
     if (s.screen === "chat") {
       const log = root.querySelector("#chatLog");
@@ -202,12 +211,12 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   // a reply plus any fields it could fill. The visitor still reviews and submits.
   function openChat() {
     s.screen = "chat";
-    if (!s.chat.length) s.chat.push({ role: "assistant", content: `Hi! I'm the check-in assistant for ${config.name}. Tell me what brings you in today, or tap Talk and just say it.` });
+    if (!s.chat.length) s.chat.push({ role: "assistant", content: `Hi! I'm the check-in assistant for ${config.name}. Tell me what brings you in today. You can type below or use the microphone.` });
     draw();
   }
   async function chatSend(text, { voice = false } = {}) {
     const t = String(text || "").trim();
-    if (!t) return;
+    if (!t || s.thinking) return;
     s.chat.push({ role: "user", content: t });
     s.draft = ""; s.thinking = true; s.error = ""; s.lastVoice = voice;
     draw();
@@ -223,15 +232,16 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     draw();
   }
   async function chatAudio(blob) {
-    s.thinking = true; draw();
-    try {
-      const r = await post("/api/stt", { audio: await toBase64(blob) });
-      s.thinking = false;
-      if (!r.text) { s.chat.push({ role: "assistant", content: "Sorry, I didn't catch that. Tap Talk and try again." }); return draw(); }
-      s.language = r.language || s.language;
-      s.via.add("voice");
-      await chatSend(r.text, { voice: true });
-    } catch (e) { s.thinking = false; s.error = e.message; draw(); }
+    const heard = s.caption;
+    s.caption = ""; s.thinking = true; draw();
+    let r = {};
+    try { r = await post("/api/stt", { audio: await toBase64(blob) }); } catch (e) { if (!heard) { s.thinking = false; s.error = e.message; return draw(); } }
+    s.thinking = false;
+    const text = r.text || heard;
+    if (!text) { s.chat.push({ role: "assistant", content: "Sorry, I didn't catch that. Tap Talk and try again." }); return draw(); }
+    s.language = r.language || s.language;
+    s.via.add("voice");
+    await chatSend(text, { voice: true });
   }
 
   async function submit() {
@@ -254,6 +264,24 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     draw();
   }
 
+  // Live captions while talking, where the browser offers speech recognition. Whisper still writes the final text.
+  function startCaption() {
+    s.caption = "";
+    const Recognizer = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognizer || s.screen !== "chat") return;
+    caption = new Recognizer();
+    caption.continuous = true;
+    caption.interimResults = true;
+    caption.lang = navigator.language || "en-US";
+    caption.onresult = (e) => {
+      s.caption = [...e.results].map((x) => x[0].transcript).join(" ").replace(/\s+/g, " ").trim();
+      const input = root.querySelector("#msg");
+      if (input) { input.value = s.caption; input.scrollLeft = input.scrollWidth; }
+    };
+    caption.onerror = () => {};
+    try { caption.start(); } catch { caption = null; }
+  }
+
   // Voice: tap to start, tap to stop (auto-stops after 20 s).
   async function startRec() {
     try {
@@ -270,11 +298,14 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       rec.start();
       s.recording = true; s.error = ""; s.reply = "Listening... tell me everything in one go, then tap Stop.";
       draw();
+      startCaption();
       recTimer = setTimeout(() => stopRec(), 20000);
     } catch { s.error = "Microphone not available. You can type instead."; draw(); }
   }
   function stopRec(cancel) {
     clearTimeout(recTimer);
+    caption?.abort();
+    caption = null;
     if (rec && rec.state !== "inactive") { rec.cancelled = !!cancel; rec.stop(); }
     s.recording = false;
   }
@@ -297,7 +328,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   async function onScan(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    collect(visibleFields());
+    collect(visibleFields(), false);
     s.busy = "Reading your card..."; draw();
     try {
       const r = await post("/api/scan", { image: await shrink(file), fields });
@@ -338,8 +369,8 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       if (preferChat) return openChat();
       s.screen = "form"; s.step = 0; return draw();
     }
-    if (go === "mic") { collect(visibleFields()); return s.recording ? stopRec() : startRec(); }
-    if (go === "chat") { collect(visibleFields()); return openChat(); }
+    if (go === "mic") { collect(visibleFields(), false); return s.recording ? stopRec() : startRec(); }
+    if (go === "chat") { collect(visibleFields(), false); return openChat(); }
     if (go === "help") { alertStaff("help", "Visitor tapped Need help on the kiosk"); s.helpSent = true; setTimeout(() => { s.helpSent = false; draw(); }, 30000); return draw(); }
     if (go === "chatmic") return s.recording ? stopRec() : startRec();
     if (go === "send") return chatSend(root.querySelector("#msg")?.value);
@@ -350,9 +381,9 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       return chatSend(`Use my saved info. (Filled from this phone: ${got.join(", ")}.)`);
     }
     if (go === "toreview") { s.note = ""; s.reply = ""; s.screen = "review"; return draw(); }
-    if (go === "toform") { s.note = ""; s.screen = "form"; s.step = 0; return draw(); }
+    if (go === "toform") { s.note = ""; s.screen = "form"; return draw(); }
     if (go === "scan") return root.querySelector("#scanInput").click();
-    if (go === "back") { collect(visibleFields()); if (s.step === 0) s.screen = "consent"; else s.step--; return draw(); }
+    if (go === "back") { collect(visibleFields(), false); if (s.step === 0) s.screen = "consent"; else s.step--; return draw(); }
     if (go === "next") {
       if (!collect(visibleFields())) return;
       if (s.step < config.steps.length - 1) { s.step++; s.note = ""; return draw(); }

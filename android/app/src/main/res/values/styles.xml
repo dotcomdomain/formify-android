@@ -1,0 +1,12 @@
+<resources>
+    <style name="Theme.Formify.Base" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#1f4d3a</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#f5efe4</item>
+        <item name="android:navigationBarColor">#1f4d3a</item>
+        <item name="android:windowBackground">#f5efe4</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <style name="Theme.Formify" parent="Theme.Formify.Base" />
+</resources>

@@ -1,0 +1,49 @@
+{
+  "duration": 49.94000000000001,
+  "format": "1080x1920, 30 fps, H.264/AAC",
+  "captureLeadIn": 1.7289110000000036,
+  "segments": [
+    {
+      "file": "edit/00-intro.mp4",
+      "duration": 3.2
+    },
+    {
+      "file": "edit/01-discover.mp4",
+      "duration": 4.033333333333333
+    },
+    {
+      "file": "edit/02-search.mp4",
+      "duration": 3.6
+    },
+    {
+      "file": "edit/03-forms.mp4",
+      "duration": 6.566666666666666
+    },
+    {
+      "file": "edit/04-fill.mp4",
+      "duration": 8.3
+    },
+    {
+      "file": "edit/05-assistant.mp4",
+      "duration": 4.233333333333333
+    },
+    {
+      "file": "edit/06-account.mp4",
+      "duration": 6.133333333333334
+    },
+    {
+      "file": "edit/07-theme.mp4",
+      "duration": 7.466666666666667
+    },
+    {
+      "file": "edit/08-finish.mp4",
+      "duration": 4.866666666666666
+    },
+    {
+      "file": "edit/99-outro.mp4",
+      "duration": 3.7
+    }
+  ],
+  "dissolve": 0.24,
+  "audio": "Original synthesized ambient bed; no third-party music"
+}

@@ -1,0 +1,45 @@
+{
+  "recordedAt": "2026-10-31T20:18:55.947Z",
+  "shots": [
+    {
+      "key": "discover",
+      "start": 1.634,
+      "end": 5.764
+    },
+    {
+      "key": "search",
+      "start": 5.764,
+      "end": 9.379
+    },
+    {
+      "key": "forms",
+      "start": 9.379,
+      "end": 15.942
+    },
+    {
+      "key": "fill",
+      "start": 15.942,
+      "end": 24.251
+    },
+    {
+      "key": "assistant",
+      "start": 24.251,
+      "end": 28.492
+    },
+    {
+      "key": "account",
+      "start": 28.492,
+      "end": 34.621
+    },
+    {
+      "key": "theme",
+      "start": 34.621,
+      "end": 42.08
+    },
+    {
+      "key": "finish",
+      "start": 42.08,
+      "end": 46.938
+    }
+  ]
+}

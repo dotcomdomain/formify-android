@@ -1,4 +1,4 @@
-// Formify for customers: Search, Assistant, You. Hash routes: #search #assistant #you #b/<id> #checkin/<id>[/chat]
+// Formify for customers: Search, Visits, Assistant, You. Hash routes: #search #visits #assistant #you #b/<id> #checkin/<id>[/chat]
 import { mountKiosk } from "/render.js";
 import { theme, setTheme } from "/js/theme.js";
 
@@ -68,7 +68,7 @@ function route() {
   return renderSearch();
 }
 $("#tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) location.hash = b.dataset.tab; });
-$("#themeBtn").addEventListener("click", () => { setTheme(theme() === "blue" ? "warm" : "blue"); if (location.hash === "#you") renderYou(); });
+$("#themeBtn").addEventListener("click", () => { setTheme(theme() === "blue" ? "warm" : "blue"); syncThemeControls(); });
 window.addEventListener("hashchange", route);
 
 // ---------- Search ----------
@@ -76,8 +76,8 @@ let query = "", type = "";
 function renderSearch() {
   view.innerHTML = `<section class="view">
     <div class="hero">
-      <h1>Skip the line,<br><em>everywhere.</em></h1>
-      <p>Find a clinic, barber, ski shop or restaurant, fill in their form from your couch, and walk straight in. Or tell the assistant what you need.</p>
+      <h1>Can't get through?<br><em>Send the form.</em></h1>
+      <p>Find a business, fill in its form, and it gets everything it needs, even if nobody picks up the phone.</p>
     </div>
     <form class="searchbar" id="sform" role="search">
       <input id="q" placeholder="Try ski, haircut, walk-in clinic..." value="${esc(query)}" autocomplete="off" aria-label="Search businesses">
@@ -363,7 +363,24 @@ async function submitAssistant() {
 }
 
 // Voice for the assistant: record, transcribe (any language), send.
-let rec, recTimer;
+let rec, recTimer, caption, heard = "";
+// Live captions while talking, where the browser offers speech recognition. Whisper still writes the final text.
+function startCaption() {
+  heard = "";
+  const Recognizer = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognizer) return;
+  caption = new Recognizer();
+  caption.continuous = true;
+  caption.interimResults = true;
+  caption.lang = navigator.language || "en-US";
+  caption.onresult = (e) => {
+    heard = [...e.results].map((x) => x[0].transcript).join(" ").replace(/\s+/g, " ").trim();
+    const input = $("#say");
+    if (input) { input.value = heard; input.scrollLeft = input.scrollWidth; }
+  };
+  caption.onerror = () => {};
+  try { caption.start(); } catch { caption = null; }
+}
 async function toggleMic() {
   const btn = $("#mic");
   if (rec?.state === "recording") { clearTimeout(recTimer); rec.stop(); return; }
@@ -374,15 +391,20 @@ async function toggleMic() {
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
+      caption?.abort();
+      caption = null;
       btn.classList.remove("rec"); btn.textContent = "Talk";
+      const input = $("#say");
+      if (input) input.value = "";
       const blob = new Blob(chunks, { type: rec.mimeType });
       const audio = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1]); fr.readAsDataURL(blob); });
-      try {
-        const r = await api("/api/stt", { method: "POST", body: { audio } });
-        if (r.text) { A.language = r.language || A.language; A.lastVoice = true; send(r.text); } else toast("Didn't catch that. Try again.");
-      } catch (e) { toast(e.message); }
+      let r = {};
+      try { r = await api("/api/stt", { method: "POST", body: { audio } }); } catch (e) { if (!heard) toast(e.message); }
+      const text = r.text || heard;
+      if (text) { A.language = r.language || A.language; A.lastVoice = true; send(text); } else if (r.text === "") toast("Didn't catch that. Try again.");
     };
     rec.start(); btn.classList.add("rec"); btn.textContent = "Stop";
+    startCaption();
     recTimer = setTimeout(() => rec.state === "recording" && rec.stop(), 20000);
   } catch { toast("Microphone not available. You can type instead."); }
 }
@@ -428,7 +450,7 @@ async function renderVisits() {
           <div class="muted small">${esc(v.form || "Check-in")} · ticket ${esc(v.ticket)} · ${when.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</div>
           ${v.last ? `<div class="small" style="margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.last.sender === "customer" ? "You: " : ""}${esc(v.last.body)}</div>` : ""}</div>
         <span class="waitpill" style="flex:none;${live ? "" : "background:var(--sand);color:var(--muted)"}">${esc(STATUS_LABEL[v.status] || v.status)}${v.paid ? " · paid" : ""}</span></a>`;
-    }).join("") : `<div class="empty panel"><b>No visits yet</b>Check in somewhere and it shows up here: your place in line, messages and receipts. <div style="margin-top:14px"><a href="#search">Find a place</a> or ask the <a href="#assistant">assistant</a></div></div>`;
+    }).join("") : `<div class="empty panel"><b>No visits yet</b>Check in somewhere and it shows up here: your place in line, messages and receipts. <div style="margin-top:14px"><a href="#search">Find a business</a> or ask the <a href="#assistant">assistant</a></div></div>`;
   };
   await draw();
   inboxTimer = setInterval(draw, 6000);
@@ -436,6 +458,25 @@ async function renderVisits() {
 
 // ---------- You ----------
 let authMode = "signup";
+function syncThemeControls() {
+  view.querySelectorAll("[data-th]").forEach((button) => {
+    const selected = button.dataset.th === theme();
+    button.classList.toggle("on", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+function updateAuthMode(mode) {
+  authMode = mode === "login" ? "login" : "signup";
+  view.querySelectorAll("[data-mode]").forEach((button) => {
+    const selected = button.dataset.mode === authMode;
+    button.classList.toggle("on", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  const password = $("#a_pass"), submit = $("#aform button"), error = $("#aerr");
+  if (password) password.autocomplete = authMode === "signup" ? "new-password" : "current-password";
+  if (submit) submit.textContent = authMode === "signup" ? "Create account and sync" : "Sign in";
+  if (error) error.textContent = "";
+}
 function renderYou() {
   const p = profile();
   const visits = account.signedIn ? account.visits || [] : local.get("ks_visits", []);
@@ -465,7 +506,7 @@ function renderYou() {
         <div class="panel"><h2>Appearance</h2><div class="seg" style="margin:0"><button type="button" data-th="warm" class="${theme() === "warm" ? "on" : ""}">Warm</button><button type="button" data-th="blue" class="${theme() === "blue" ? "on" : ""}">Blue</button></div></div>
         <div class="panel"><h2>Recent check-ins</h2>
           ${visits.length ? visits.map((v) => `<div class="visit-row"><div><b>${esc(v.name)}</b><div class="muted small">Ticket ${esc(v.ticket)} · ${new Date(v.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</div></div><a href="/visit.html#${esc(v.token)}" class="small">Status</a></div>`).join("")
-            : '<p class="muted" style="margin:0">Nothing yet. <a href="#search">Find a place</a> or ask the <a href="#assistant">assistant</a>.</p>'}</div>
+            : '<p class="muted" style="margin:0">Nothing yet. <a href="#search">Find a business</a> or ask the <a href="#assistant">assistant</a>.</p>'}</div>
       </div>
     </div>
   </section>`;
@@ -485,8 +526,10 @@ function renderYou() {
     toast("Deleted"); renderYou();
   });
   $("#signout")?.addEventListener("click", async () => { await api("/api/me/logout", { method: "POST" }); account = { signedIn: false }; local.del("ks_profile"); toast("Signed out. Info removed from this device."); renderYou(); });
-  view.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => { authMode = b.dataset.mode; renderYou(); });
-  view.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => { setTheme(b.dataset.th); renderYou(); });
+  view.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => updateAuthMode(b.dataset.mode));
+  view.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => { setTheme(b.dataset.th); syncThemeControls(); });
+  updateAuthMode(authMode);
+  syncThemeControls();
   $("#aform")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const body = { email: $("#a_email").value, password: $("#a_pass").value, profile: local.get("ks_profile", {}) };

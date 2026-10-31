@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+const port = process.argv[2] || '9222';
+const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const page = pages.find(p => p.url.startsWith('https://getformify.pages.dev'));
+assert.ok(page, 'Open Formify first');
+const socket = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { socket.onopen=resolve; socket.onerror=reject; });
+let id=0;
+const pending=new Map();
+socket.onmessage=e=>{const data=JSON.parse(e.data),p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.error?p.reject(data.error):p.resolve(data.result);}};
+const send=(method,params={})=>new Promise((resolve,reject)=>{const n=++id,timer=setTimeout(()=>reject(new Error(method+' timed out')),15000);pending.set(n,{resolve,reject,timer});socket.send(JSON.stringify({id:n,method,params}));});
+const js=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,userGesture:true});assert.ok(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value;};
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
+const wait=async expression=>{for(let i=0;i<40;i++){if(await js(expression))return;await pause(200);}throw new Error(expression);};
+const checks=[];
+try {
+  await js(`location.hash='you'`);
+  await wait(`!!document.querySelector('#aform') && document.documentElement.classList.contains('fm-theme-ready')`);
+  await pause(450);
+  await js(`window.__youCheck={section:document.querySelector('#view > .view'), profile:document.querySelector('#pform'), auth:document.querySelector('#aform'), theme:document.documentElement.dataset.theme||'warm', mode:document.querySelector('[data-mode].on').dataset.mode, fetch:window.fetch, drafts:Array.from(document.querySelectorAll('#view input')).map(input=>[input,input.value,input.selectionStart,input.selectionEnd]), scroll:scrollY, animations:document.querySelector('#view > .view').getAnimations().map(a=>a.startTime)};
+    document.querySelector('#p_name').value='Unsaved animation test';
+    document.querySelector('#a_email').value='animation-test@example.invalid';
+    document.querySelector('#a_pass').value='test-password-123';
+    document.querySelector('#a_email').focus({preventScroll:true});
+    window.scrollTo({top:document.querySelector('#aform').getBoundingClientRect().top+scrollY-120,behavior:'instant'});
+    __youCheck.testScroll=scrollY;`);
+  await js(`document.querySelector('[data-mode=login]').click()`);
+  assert.equal(await js(`__youCheck.section===document.querySelector('#view > .view') && __youCheck.auth===document.querySelector('#aform') && __youCheck.profile===document.querySelector('#pform')`),true);
+  assert.equal(await js(`document.querySelector('#a_email').value==='animation-test@example.invalid' && document.querySelector('#a_pass').value==='test-password-123' && document.querySelector('#p_name').value==='Unsaved animation test'`),true);
+  assert.equal(await js(`document.activeElement.id==='a_email' && Math.abs(scrollY-__youCheck.testScroll)<2`),true);
+  assert.equal(await js(`document.querySelector('#a_pass').autocomplete==='current-password' && document.querySelector('#aform button').textContent==='Sign in'`),true);
+  checks.push('account mode preserves DOM, drafts, focus and scroll; labels update');
+  // Verify the real form handler uses the selected mode, with network calls stubbed locally.
+  await js(`window.__youRequests=[]; window.fetch=(url,options)=>String(url).match(/^\\/api\\/me\\/(login|signup)$/)?(__youRequests.push(String(url)),Promise.resolve(new Response(JSON.stringify({error:'Local animation test'}),{status:401,headers:{'content-type':'application/json'}}))):__youCheck.fetch(url,options);document.querySelector('#aform').requestSubmit()`);
+  await wait(`__youRequests.length===1`);
+  assert.equal(await js(`__youRequests[0]`),'/api/me/login');
+  await js(`document.querySelector('[data-mode=signup]').click(); document.querySelector('#aform').requestSubmit()`);
+  await wait(`__youRequests.length===2`);
+  assert.equal(await js(`__youRequests[1]`),'/api/me/signup');
+  checks.push('each mode submits once to its matching endpoint (network stubbed)');
+  const original=await js(`__youCheck.theme`);
+  const other=original==='blue'?'warm':'blue';
+  const start=await js(`getComputedStyle(document.body).getPropertyValue('--cream')`);
+  // Reduced motion is emulated only for the later check.
+  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+  const samples=await js(`new Promise(resolve=>{const values=[];document.querySelector('[data-th=${other}]').click();const sample=()=>{values.push(getComputedStyle(document.body).getPropertyValue('--cream'));if(values.length<8)setTimeout(sample,45);else resolve(values)};sample()})`);
+  await pause(400);
+  const end=await js(`getComputedStyle(document.body).getPropertyValue('--cream')`);
+  assert.notEqual(start,end);
+  assert.ok(samples.some(value=>value!==start && value!==end),'theme has intermediate colors');
+  assert.equal(await js(`__youCheck.section===document.querySelector('#view > .view') && __youCheck.auth===document.querySelector('#aform') && __youCheck.profile===document.querySelector('#pform') && document.querySelector('#p_name').value==='Unsaved animation test' && Math.abs(scrollY-__youCheck.testScroll)<2`),true);
+  assert.equal(await js(`document.querySelector('#view > .view').getAnimations().map(a=>a.startTime).join()===__youCheck.animations.join()`),true);
+  checks.push('palette interpolates through intermediate colors without rebuilding or reanimating You');
+  await js(`document.querySelector('#themeBtn').click()`);
+  await pause(550);
+  assert.equal(await js(`__youCheck.section===document.querySelector('#view > .view') && document.querySelector('[data-th].on').dataset.th===document.documentElement.dataset.theme`),true);
+  checks.push('header theme switch also preserves the screen and selected appearance');
+  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+  await js(`document.querySelector('[data-th=${other}]').click()`);
+  await pause(50);
+  assert.equal(await js(`getComputedStyle(document.documentElement).transitionDuration.split(',').every(value=>parseFloat(value)<0.001)`),true);
+  checks.push('reduced motion disables the palette animation');
+  console.log(JSON.stringify({passed:checks.length,checks},null,2));
+} finally {
+  await js(`if(window.__youCheck){window.fetch=__youCheck.fetch;document.querySelector('[data-mode='+__youCheck.mode+']')?.click();for(const [input,value,start,end] of __youCheck.drafts){input.value=value;if(start!==null)try{input.setSelectionRange(start,end)}catch{}}document.querySelector('[data-th='+__youCheck.theme+']')?.click();document.activeElement?.blur();window.scrollTo({top:__youCheck.scroll,behavior:'instant'});document.querySelector('#aerr').textContent='';delete window.__youCheck;delete window.__youRequests;}`);
+  await send('Emulation.setEmulatedMedia',{features:[]});
+  socket.close();
+}

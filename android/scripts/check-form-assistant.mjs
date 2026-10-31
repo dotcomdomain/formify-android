@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+const port=process.argv[2]||'9222';
+const pages=await(await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const page=pages.find(p=>p.url.startsWith('https://getformify.pages.dev'));
+assert.ok(page,'Open Formify first');
+const ws=new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject});
+let id=0;const pending=new Map();
+ws.onmessage=e=>{const d=JSON.parse(e.data),p=pending.get(d.id);if(p){pending.delete(d.id);clearTimeout(p.timer);d.error?p.reject(d.error):p.resolve(d.result)}};
+const send=(method,params={})=>new Promise((resolve,reject)=>{const n=++id,timer=setTimeout(()=>reject(new Error(method)),20000);pending.set(n,{resolve,reject,timer});ws.send(JSON.stringify({id:n,method,params}))});
+const js=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true,userGesture:true});assert.ok(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value};
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const wait=async expression=>{for(let i=0;i<80;i++){if(await js(expression))return;await pause(150)}throw new Error(expression)};
+const checks=[];
+try{
+ await send('Page.reload');await pause(1200);
+ await wait(`!!window.FormifyUI && (!!document.querySelector('#consent') || !!document.querySelector('.bcard'))`);
+ await js(`location.hash='search'`);await wait(`!!document.querySelector('.bcard')`);
+ const target=await js(`(async()=>{const d=await(await fetch('/api/directory?q=ski')).json();return d.businesses[0].id})()`);
+ await js(`location.hash='checkin/'+${JSON.stringify(target)}`);await wait(`!!document.querySelector('#consent')`);
+ await js(`document.querySelector('#consent').checked=true;document.querySelector('[data-go=form]').click()`);
+ await wait(`!!document.querySelector('[data-go=chat]')`);
+ await js(`window.__assistantTest={fetch:window.fetch,invalid:0,requests:0};__assistantTest.invalidHandler=()=>__assistantTest.invalid++;document.addEventListener('invalid',__assistantTest.invalidHandler,true);const input=document.querySelector('#kiosk form input[type=text]');input.value='Demo visitor';__assistantTest.name=input.name;document.querySelector('[data-go=chat]').click();window.scrollTo({top:0,behavior:'instant'})`);
+ await wait(`!!document.querySelector('.assistant-mode')`);await pause(400);
+ assert.equal(await js(`__assistantTest.invalid===0 && !window.FormifyUI.pickerOpen()`),true);
+ assert.equal(await js(`!document.querySelector('.assistant-progress').open && document.querySelector('.assistant-progress summary').textContent.includes('1 of')`),true);
+ checks.push('partial form switches to assistant without validation popups; progress is collapsed');
+ const fits=`(()=>{const input=document.querySelector('#msg').getBoundingClientRect(),footer=document.querySelector('.checkin-chat-footer').getBoundingClientRect(),nav=document.querySelector('.tabs').getBoundingClientRect();return input.width>100 && document.documentElement.scrollWidth<=innerWidth+1 && footer.bottom<=nav.top+1})()`;
+ assert.equal(await js(fits),true);
+ if(process.argv[3]){
+  execFileSync(process.argv[3],['-s','emulator-5554','shell','screencap','-p','/sdcard/formify-assistant-after.png'],{windowsHide:true});
+  execFileSync(process.argv[3],['-s','emulator-5554','pull','/sdcard/formify-assistant-after.png','evidence/assistant-after.png'],{windowsHide:true,stdio:'ignore'});
+ }
+ checks.push('composer and review controls fit above navigation without horizontal overflow');
+ await js(`document.querySelector('[data-go=toform]').click()`);
+ assert.equal(await js(`document.querySelector('#kiosk form input[type=text]').value==='Demo visitor' && !document.querySelector('.fm-assistant-sheet')`),true);
+ await js(`document.querySelector('[data-go=chat]').click();document.querySelector('.assistant-progress').open=true`);
+ await pause(150);assert.equal(await js(`document.querySelectorAll('.assistant-progress .slot').length>0`),true);
+ checks.push('returning to the form preserves the draft; field details expand on demand');
+ await js(`window.fetch=async(url,options)=>{if(String(url)==='/api/agent'){__assistantTest.requests++;await new Promise(resolve=>setTimeout(resolve,120));return new Response(JSON.stringify({reply:'We can help with that rental. What equipment would you like?',answers:{[__assistantTest.name]:'Demo visitor'}}),{headers:{'content-type':'application/json'}})}return __assistantTest.fetch(url,options)};document.querySelector('#msg').value='Help me with a ski rental';document.querySelector('[data-go=send]').click();document.querySelector('[data-go=send]').click()`);
+ await wait(`document.querySelectorAll('#chatLog .bubble').length===3 && !document.querySelector('.bubble.typing')`);
+ assert.equal(await js(`__assistantTest.requests===1 && document.querySelector('.assistant-progress').open`),true);
+ assert.equal(await js(fits),true);
+ checks.push('mocked assistant reply renders once, retains expanded details and keeps actions visible');
+ await js(`document.querySelector('.assistant-progress').open=false`);
+ await send('Emulation.setDeviceMetricsOverride',{width:320,height:640,deviceScaleFactor:2.625,mobile:true});await pause(300);
+ assert.equal(await js(fits),true);
+ checks.push('320px-wide layout keeps a usable input and visible footer');
+ await send('Emulation.setDeviceMetricsOverride',{width:320,height:420,deviceScaleFactor:2.625,mobile:true});
+ await js(`document.querySelector('#msg').focus({preventScroll:true})`);await pause(350);
+ assert.equal(await js(`document.body.classList.contains('fm-chat-typing') && document.querySelector('.checkin-chat-footer').getBoundingClientRect().bottom<=innerHeight && document.querySelector('#msg').getBoundingClientRect().width>100`),true);
+ checks.push('keyboard-sized viewport keeps the composer on screen');
+ await js(`document.activeElement.blur()`);await send('Emulation.clearDeviceMetricsOverride');await pause(300);
+ await js(`window.fetch=async(url,options)=>String(url)==='/api/agent'?new Response(JSON.stringify({error:'Demo: please try again'}),{status:503,headers:{'content-type':'application/json'}}):__assistantTest.fetch(url,options);document.querySelector('#msg').value='Try another message';document.querySelector('[data-go=send]').click()`);
+ await wait(`!!document.querySelector('.checkin-chat-footer [role=alert]')`);
+ assert.equal(await js(`!!document.querySelector('[data-go=toform]') && !document.querySelector('[data-go=send]').disabled`),true);
+ checks.push('request errors stay inside the footer and leave recovery controls available');
+ console.log(JSON.stringify({passed:checks.length,checks},null,2));
+}finally{
+ await send('Emulation.clearDeviceMetricsOverride');
+ await js(`if(window.__assistantTest){window.fetch=__assistantTest.fetch;document.removeEventListener('invalid',__assistantTest.invalidHandler,true);delete window.__assistantTest}document.activeElement?.blur()`);
+ ws.close();
+}

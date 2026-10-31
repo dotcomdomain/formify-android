@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Young+Serif&display=swap");
+@import url("/assistant.css");
 :root {
   --bg: #f5efe4; --card: #fffaf2; --ink: #1d2a24; --muted: #6b6f66; --line: #e6dccb;
   --brand: #1f4d3a; --ok: #2e7d4f; --warn: #b4532a; --radius: 16px;

@@ -1,0 +1,13 @@
+{
+  "passed": 8,
+  "checks": [
+    "real rental form opens the themed HTML picker",
+    "text focus uses an integrated border/glow, without an outer outline",
+    "selection updates the real form and fires one input/change pair; disabled rows stay disabled",
+    "Android Back dismisses the sheet and restores focus without navigating or changing data",
+    "keyboard arrows and Enter select options",
+    "required-field validation opens the custom picker with a helpful message",
+    "searchable multi-select preserves selections and commits on Done",
+    "backdrop dismissal cleans up the modal and scroll lock"
+  ]
+}

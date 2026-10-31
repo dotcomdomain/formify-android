@@ -1,0 +1,12 @@
+{
+  "passed": 7,
+  "checks": [
+    "partial form switches to assistant without validation popups; progress is collapsed",
+    "composer and review controls fit above navigation without horizontal overflow",
+    "returning to the form preserves the draft; field details expand on demand",
+    "mocked assistant reply renders once, retains expanded details and keeps actions visible",
+    "320px-wide layout keeps a usable input and visible footer",
+    "keyboard-sized viewport keeps the composer on screen",
+    "request errors stay inside the footer and leave recovery controls available"
+  ]
+}
