@@ -1,6 +1,7 @@
 import { createCheckin } from "../../../../lib/checkin.js";
 import { loadConfig, position } from "../../../../lib/queue.js";
 import { easeFor } from "../../../../lib/ease.js";
+import { ownsKiosk, sessionFor, json } from "../../../../lib/auth.js";
 
 const DAY = 86400000;
 
@@ -9,13 +10,16 @@ export async function onRequestPost({ params, request, env, waitUntil }) {
   const config = await loadConfig(env, params.id);
   if (!config) return Response.json({ error: "Kiosk not found" }, { status: 404 });
   const body = await request.json().catch(() => ({}));
-  const result = await createCheckin(env, waitUntil, params.id, config, { ...body, channel: body.channel === "phone" ? "phone" : "kiosk" });
+  // Signed-in customers get the visit in their account; everyone else stays anonymous.
+  const userId = body.channel === "phone" ? await sessionFor(env, request, "user") : null;
+  const result = await createCheckin(env, waitUntil, params.id, config, { ...body, channel: body.channel === "phone" ? "phone" : "kiosk", userId });
   if (result.error) return Response.json(result, { status: 400 });
   return Response.json(result);
 }
 
 // Dashboard: queue, today's numbers, audit log. Sensitive answers are masked unless revealed.
 export async function onRequestGet({ params, request, env }) {
+  if (!(await ownsKiosk(env, request, params.id))) return json({ error: "Sign in to see this location's queue." }, 403);
   const config = await loadConfig(env, params.id);
   if (!config) return Response.json({ error: "Kiosk not found" }, { status: 404 });
 

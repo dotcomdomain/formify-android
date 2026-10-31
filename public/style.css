@@ -1,12 +1,15 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Young+Serif&display=swap");
 :root {
-  --bg: #f6f7f9; --card: #fff; --ink: #14171c; --muted: #5f6672; --line: #e2e5ea;
-  --brand: #1f6feb; --ok: #15803d; --warn: #b45309; --radius: 14px;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bg: #f5efe4; --card: #fffaf2; --ink: #1d2a24; --muted: #6b6f66; --line: #e6dccb;
+  --brand: #1f4d3a; --ok: #2e7d4f; --warn: #b4532a; --radius: 16px;
+  --serif: "Young Serif", Georgia, serif;
+  font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); }
 a { color: var(--brand); }
 h1, h2, h3 { margin: 0 0 .4em; letter-spacing: -.01em; }
+h1, h2 { font-family: var(--serif); font-weight: 400; }
 p { margin: 0 0 1em; line-height: 1.5; }
 .muted { color: var(--muted); }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 16px 60px; }

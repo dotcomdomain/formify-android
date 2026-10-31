@@ -1,4 +1,6 @@
 import { easeFor, publicBusiness } from "../../../lib/ease.js";
+import { ownsKiosk, json } from "../../../lib/auth.js";
+import { sanitize } from "../../../lib/config.js";
 
 export async function onRequestGet({ params, env }) {
   const row = await env.DB.prepare("SELECT config FROM kiosks WHERE id = ?").bind(params.id).first();
@@ -7,4 +9,17 @@ export async function onRequestGet({ params, env }) {
   const ease = await easeFor(env, params.id);
   const { waiting } = await env.DB.prepare("SELECT COUNT(*) AS waiting FROM checkins WHERE kiosk_id = ? AND status = 'waiting'").bind(params.id).first();
   return Response.json({ id: params.id, config, business: { ...publicBusiness(params.id, config, ease), waiting } });
+}
+
+// Owner edits a published form. The change is logged.
+export async function onRequestPut({ params, request, env }) {
+  if (!(await ownsKiosk(env, request, params.id))) return json({ error: "Not your location." }, 403);
+  const { config } = await request.json().catch(() => ({}));
+  const clean = sanitize(config);
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE kiosks SET config = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(clean), now, params.id),
+    env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)").bind(params.id, "edited", `Form updated: ${clean.steps.reduce((n, s) => n + s.fields.length, 0)} fields, retention ${clean.retention_days} days.`, now)
+  ]);
+  return json({ ok: true });
 }

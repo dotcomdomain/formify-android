@@ -1,7 +1,11 @@
+import { ownsKiosk, json } from "../../../lib/auth.js";
+
 const STATUSES = ["waiting", "serving", "payment", "done", "no-show"];
 
 // Front desk moves a ticket along: waiting -> serving -> payment (cashier) -> done.
 export async function onRequestPatch({ params, request, env }) {
+  const row = await env.DB.prepare("SELECT kiosk_id FROM checkins WHERE id = ?").bind(params.cid).first();
+  if (!row || !(await ownsKiosk(env, request, row.kiosk_id))) return json({ error: "Not your location." }, 403);
   const { status, amount, paid } = await request.json().catch(() => ({}));
   if (!STATUSES.includes(status)) return Response.json({ error: "Bad status" }, { status: 400 });
 

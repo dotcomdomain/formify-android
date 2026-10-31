@@ -26,13 +26,15 @@ Small and mid-size businesses that need a front-desk or self-serve screen but ha
 Takeaway: the lockdown layer (FreeKiosk, Fully Kiosk Browser) and single-purpose apps already exist. What's missing is the "form in, configured kiosk out" step that a non-technical business can do on its own.
 
 ## Live
-- For businesses (builder): https://getformify.pages.dev
-- For customers (form finder): https://getformify.pages.dev/find.html
-- My info (wallet, stored on the phone only): https://getformify.pages.dev/me.html
-- Demo businesses (fictional, seeded by `scripts/seed.py`):
-  - Maple Lane Family Clinic: kiosk `/kiosk.html?id=b953a2f2`, dashboard `/dash.html?id=b953a2f2`, page `/b.html?id=b953a2f2`
-  - Lantern Noodle Bar: `303ac7a4`
-  - Terminal Assistance Desk: `d3394301`
+- **Formify** (customers): https://getformify.pages.dev — tabs: Search, Assistant, You
+- **Formify for Business**: https://getformify.pages.dev/business.html — sign in, then Live, Forms, Insights, Settings
+- Kiosk for a tablet: `/kiosk.html?id=<location>` · phone link / QR target: `/go.html?id=<location>` · visitor status: `/visit.html#<token>`
+- Demo business login: see `DEMO_ACCOUNTS.local.md` (git-ignored, local only). It owns the seeded demo locations.
+
+## Accounts and privacy
+- Businesses sign in (PBKDF2 password hashing, HttpOnly session cookie). Queue, alerts, payments, edits and publishing are owner-only.
+- Customers don't need an account: their info stays on the device. An optional account syncs it across devices, encrypted with AES-GCM (key in the `PROFILE_KEY` Pages secret). "Delete my account" removes it and unlinks past visits.
+- Customer data is never sold. Insights are per business, own visitors only.
 
 ## Platform
 Two sides. Businesses create a check-in page from one sentence and pay per location. Customers are free: they find a business, check in from their phone before arriving, keep their details in a wallet on their own phone, and rate how easy the visit was (Ease Score).

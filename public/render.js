@@ -57,11 +57,11 @@ async function speak(text, lang) {
   }
 }
 
-export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, onArrive, onDone, qrUrl, idleMs = 60000 } = {}) {
+export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, onArrive, onDone, qrUrl, idleMs = 60000, startAt = "welcome", preferChat = false, initialAnswers = {} } = {}) {
   const fields = config.steps.flatMap((s) => s.fields);
   const phone = mode === "phone";
   let s;
-  const fresh = () => ({ screen: "welcome", step: 0, answers: {}, consent: false, result: null, error: "", busy: "", note: "", reply: "", language: "en", via: new Set(), remember: true, recording: false, chat: [], thinking: false, draft: "", lastVoice: false, urgent: false });
+  const fresh = () => ({ screen: startAt, step: 0, answers: { ...initialAnswers }, consent: false, result: null, error: "", busy: "", note: "", reply: "", language: "en", via: new Set(), remember: true, recording: false, chat: [], thinking: false, draft: "", lastVoice: false, urgent: false });
   s = fresh();
   let idle, rec, recTimer;
   root.classList.add("kiosk");
@@ -334,7 +334,8 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       s.consent = root.querySelector("#consent")?.checked;
       if (!s.consent) { s.error = "Please agree to continue."; return draw(); }
       const n = prefillFromProfile();
-      if (n) s.note = `Filled ${n} detail${n > 1 ? "s" : ""} saved on this phone.`;
+      if (n) s.note = `Filled ${n} detail${n > 1 ? "s" : ""} from your info.`;
+      if (preferChat) return openChat();
       s.screen = "form"; s.step = 0; return draw();
     }
     if (go === "mic") { collect(visibleFields()); return s.recording ? stopRec() : startRec(); }

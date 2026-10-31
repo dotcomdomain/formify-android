@@ -2,173 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Formify">
+<meta name="theme-color" content="#f5efe4">
+<meta name="description" content="Find a business, fill in its form before you arrive, and skip the line. Or just tell the Formify assistant what you need.">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Formify</title>
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/formify.css">
 </head>
-<body>
-<div class="wrap">
-  <div class="top">
-    <div class="logo">Form<span>ify</span></div>
-    <nav class="row small" style="gap:18px;font-weight:600"><span class="muted">For businesses</span><a href="/find.html">Find a business</a><a href="/me.html">My info</a></nav>
-  </div>
-
-  <div class="card" style="margin-bottom:20px">
-    <p class="small" style="margin:0 0 6px;font-weight:700;color:var(--brand);letter-spacing:.02em">Fortify your business with Formify</p>
-    <h1 style="font-size:26px">What should your check-in do?</h1>
-    <p class="muted">One or two sentences: your business, who checks in, and what you need to know before you serve them.</p>
-    <textarea id="prompt" rows="3" placeholder="Family clinic in Hamilton. Patients check in with their health card, tell us why they're here, and the front desk gets notified."></textarea>
-    <div class="chips">
-      <button class="chip" data-ex="Family clinic in Hamilton. Patients check in with their health card and date of birth, pick walk-in or booked appointment, and say why they're visiting. Alert the front desk.">Clinic</button>
-      <button class="chip" data-ex="Busy noodle restaurant. Guests join the waitlist with party size and a phone number for a text, and can pre-order a starter while they wait.">Restaurant</button>
-      <button class="chip" data-ex="Airport assistance desk. Travellers check in for bag drop or help like wheelchair service or rebooking, with their flight number and number of bags.">Airport</button>
-    </div>
-    <div class="row">
-      <button id="gen">Generate kiosk</button>
-      <span id="genStatus" class="muted small"></span>
-    </div>
-  </div>
-
-  <div id="result" class="grid2" hidden>
-    <div class="card">
-      <div class="row" style="justify-content:space-between">
-        <h2 style="font-size:20px;margin:0">Review before publishing</h2>
-        <span id="source" class="pill"></span>
-      </div>
-      <p class="muted small" style="margin-top:8px">Nothing goes live until you approve it. Fields marked sensitive are hidden on the dashboard unless staff reveal them, and every reveal is logged.</p>
-
-      <div class="grid2" style="gap:12px">
-        <div><label>Business name</label><input data-k="name"></div>
-        <div><label>Brand colour</label><input data-k="brand_color" type="color" style="height:42px;padding:4px"></div>
-      </div>
-      <label>Welcome title</label><input data-k="welcome_title">
-      <label>Consent text shown to visitors</label><textarea data-k="consent_text" rows="2"></textarea>
-      <div class="grid2" style="gap:12px">
-        <div><label>Delete data after (days)</label><input data-k="retention_days" type="number" min="1" max="365"></div>
-        <div><label>Avg. minutes per visitor</label><input data-k="avg_service_minutes" type="number" min="1" max="120"></div>
-      </div>
-
-      <div class="step-title">Your public page</div>
-      <p class="muted small" style="margin:4px 0 0">Customers find you in the Formify finder, check in from their phone, and rate how easy it was.</p>
-      <div class="grid2" style="gap:12px">
-        <div><label>City</label><input data-k="city" placeholder="Hamilton, ON"></div>
-        <div><label>Instagram</label><input data-k="instagram" placeholder="@yourbusiness"></div>
-        <div><label>Google reviews link</label><input data-k="google_reviews" placeholder="g.page/r/..."></div>
-        <div><label>Website</label><input data-k="website" placeholder="yourbusiness.ca"></div>
-      </div>
-      <label class="check" style="font-weight:500"><input type="checkbox" data-k="listed" style="width:auto"> List my business in the finder</label>
-
-      <div id="fields"></div>
-
-      <div class="row" style="margin-top:20px">
-        <button id="publish">Approve and publish</button>
-        <span id="pubStatus" class="muted small"></span>
-      </div>
-      <div id="links" class="small" style="margin-top:12px"></div>
-    </div>
-
-    <div>
-      <div class="row" style="justify-content:space-between;margin-bottom:8px">
-        <strong>Live preview</strong><span class="muted small">Try it. Nothing is saved.</span>
-      </div>
-      <div id="preview"></div>
-    </div>
-  </div>
+<body class="app">
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="#search"><span class="mark">Form<i>ify</i></span><span class="tag">Skip the line, everywhere</span></a>
+    <nav class="tabs" id="tabs" aria-label="Sections">
+      <button data-tab="search">Search</button>
+      <button data-tab="assistant">Assistant</button>
+      <button data-tab="you">You</button>
+    </nav>
+    <a class="biz-link" href="/business.html">For businesses</a>
+  </header>
+  <main class="page" id="view"></main>
 </div>
-
-<script type="module">
-import { mountKiosk } from "/render.js";
-
-const $ = (s) => document.querySelector(s);
-const TYPES = ["text", "tel", "email", "date", "number", "select", "checkbox", "textarea"];
-let config = null, source = "";
-
-document.querySelectorAll("[data-ex]").forEach((b) => b.onclick = () => { $("#prompt").value = b.dataset.ex; });
-
-$("#gen").onclick = async () => {
-  const prompt = $("#prompt").value.trim();
-  if (!prompt) return $("#prompt").focus();
-  $("#gen").disabled = true;
-  $("#genStatus").textContent = "Designing your kiosk...";
-  try {
-    const r = await fetch("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt }) });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error);
-    config = data.config; source = data.source;
-    $("#genStatus").textContent = "";
-    $("#links").innerHTML = ""; $("#pubStatus").textContent = "";
-    $("#source").textContent = source === "ai" ? "Generated by AI" : "Starter template";
-    $("#source").className = "pill" + (source === "ai" ? " ai" : "");
-    $("#result").hidden = false;
-    fillEditor(); preview();
-  } catch (e) {
-    $("#genStatus").textContent = e.message || "Could not generate. Try again.";
-  }
-  $("#gen").disabled = false;
-};
-
-function fillEditor() {
-  document.querySelectorAll("[data-k]").forEach((el) => {
-    if (el.type === "checkbox") el.checked = config[el.dataset.k] !== false;
-    else el.value = config[el.dataset.k] ?? "";
-  });
-  $("#fields").innerHTML = config.steps.map((s, si) => `
-    <div class="step-title">Step ${si + 1}: <input data-st="${si}" value="${s.title.replace(/"/g, "&quot;")}" style="display:inline;width:auto;padding:5px 8px"></div>
-    ${s.fields.map((f, fi) => `
-      <div class="field-row">
-        <input data-f="${si}.${fi}.label" value="${f.label.replace(/"/g, "&quot;")}">
-        <select data-f="${si}.${fi}.type">${TYPES.map((t) => `<option${t === f.type ? " selected" : ""}>${t}</option>`).join("")}</select>
-        <span class="row small" style="gap:10px">
-          <label class="small" style="margin:0;font-weight:500"><input type="checkbox" data-f="${si}.${fi}.required" ${f.required ? "checked" : ""} style="width:auto"> required</label>
-          <label class="small" style="margin:0;font-weight:500"><input type="checkbox" data-f="${si}.${fi}.sensitive" ${f.sensitive ? "checked" : ""} style="width:auto"> <span class="pill sens">sensitive</span></label>
-        </span>
-        <button class="x" data-rm="${si}.${fi}" title="Remove field">✕</button>
-      </div>`).join("")}`).join("");
-}
-
-$("#result").addEventListener("input", (e) => {
-  const el = e.target;
-  if (el.dataset.k) config[el.dataset.k] = el.type === "number" ? +el.value : el.type === "checkbox" ? el.checked : el.value;
-  if (el.dataset.st) config.steps[+el.dataset.st].title = el.value;
-  if (el.dataset.f) {
-    const [si, fi, key] = el.dataset.f.split(".");
-    const f = config.steps[si].fields[fi];
-    f[key] = el.type === "checkbox" ? el.checked : el.value;
-    if (key === "type" && f.type === "select" && !f.options?.length) f.options = ["Option 1", "Option 2"];
-  }
-  if (el.dataset.k !== undefined || el.dataset.f || el.dataset.st) preview();
-});
-$("#result").addEventListener("change", (e) => { if (e.target.type === "checkbox" || e.target.tagName === "SELECT") preview(); });
-$("#fields").addEventListener("click", (e) => {
-  const rm = e.target.closest("[data-rm]")?.dataset.rm;
-  if (!rm) return;
-  const [si, fi] = rm.split(".").map(Number);
-  config.steps[si].fields.splice(fi, 1);
-  config.steps = config.steps.filter((s) => s.fields.length);
-  fillEditor(); preview();
-});
-
-let n = 0;
-function preview() {
-  const host = document.createElement("div");
-  $("#preview").replaceChildren(host);
-  mountKiosk(host, config, { onSubmit: async () => ({ ticket: `${config.ticket_prefix}${String(++n).padStart(3, "0")}`, ahead: 2, wait_minutes: 2 * config.avg_service_minutes }) });
-}
-
-$("#publish").onclick = async () => {
-  $("#publish").disabled = true;
-  $("#pubStatus").textContent = "Publishing...";
-  try {
-    const r = await fetch("/api/kiosks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ config, source }) });
-    const { id } = await r.json();
-    const k = `${location.origin}/kiosk.html?id=${id}`, d = `${location.origin}/dash.html?id=${id}`, b = `${location.origin}/b.html?id=${id}`;
-    $("#pubStatus").textContent = "Live.";
-    $("#links").innerHTML = `<p><strong>Kiosk</strong> (open on the tablet, full screen): <a href="${k}" target="_blank">${k}</a></p>
-      <p><strong>Front desk dashboard:</strong> <a href="${d}" target="_blank">${d}</a></p>
-      <p><strong>Your public page</strong> (share it, or print its QR code): <a href="${b}" target="_blank">${b}</a></p>`;
-  } catch { $("#pubStatus").textContent = "Publish failed. Try again."; }
-  $("#publish").disabled = false;
-};
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script type="module" src="/js/consumer.js"></script>
 </body>
 </html>

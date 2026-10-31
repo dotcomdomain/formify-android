@@ -1,0 +1,385 @@
+// Formify for customers: Search, Assistant, You. Hash routes: #search #assistant #you #b/<id> #checkin/<id>[/chat]
+import { mountKiosk } from "/render.js";
+
+const $ = (s, el = document) => el.querySelector(s);
+const view = $("#view");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { "content-type": "application/json", ...(opts.headers || {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(data.error || "Something went wrong."); e.status = r.status; throw e; }
+  return data;
+}
+function toast(msg) {
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.append(t); setTimeout(() => t.remove(), 2600);
+}
+
+// ---------- Your info: on this device, or in an account (encrypted) ----------
+const PKEYS = [["name", "Name"], ["dob", "Date of birth"], ["health_card", "Health card number"], ["phone", "Phone"], ["email", "Email"]];
+const PROFILE_MAP = [[/name/i, "name"], [/birth|dob/i, "dob"], [/health card|ohip/i, "health_card"], [/phone|mobile|cell/i, "phone"], [/email/i, "email"]];
+const profileKey = (label) => PROFILE_MAP.find(([re]) => re.test(label))?.[1];
+const local = {
+  get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del: (k) => { try { localStorage.removeItem(k); } catch {} }
+};
+let account = { signedIn: false };
+
+async function loadAccount() {
+  try {
+    account = await api("/api/me/profile");
+    // Mirror to the device so forms can pre-fill; cleared on sign-out.
+    local.set("ks_profile", account.profile || {});
+  } catch { account = { signedIn: false }; }
+}
+const profile = () => (account.signedIn ? account.profile || {} : local.get("ks_profile", {}));
+async function saveProfile(p) {
+  local.set("ks_profile", p);
+  if (account.signedIn) { await api("/api/me/profile", { method: "PUT", body: { profile: p } }); account.profile = p; }
+}
+function rememberVisit(v) {
+  if (account.signedIn) return; // the account already records it
+  const visits = local.get("ks_visits", []);
+  visits.unshift({ ...v, at: Date.now() });
+  local.set("ks_visits", visits.slice(0, 20));
+}
+const prefillFor = (config) => {
+  const p = profile(), out = {};
+  for (const s of config.steps) for (const f of s.fields) { const k = profileKey(f.label); if (k && p[k]) out[f.id] = p[k]; }
+  return out;
+};
+const track = (id, type) => fetch(`/api/kiosks/${encodeURIComponent(id)}/events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type }) }).catch(() => {});
+
+// ---------- Router ----------
+function route() {
+  const [tab, id, extra] = (location.hash.slice(1) || "search").split("/");
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (tab === "b" || tab === "checkin" ? "search" : tab)));
+  window.scrollTo({ top: 0 });
+  if (tab === "assistant") return renderAssistant();
+  if (tab === "you") return renderYou();
+  if (tab === "b" && id) return renderBusiness(id);
+  if (tab === "checkin" && id) return renderCheckin(id, extra === "chat");
+  return renderSearch();
+}
+$("#tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) location.hash = b.dataset.tab; });
+window.addEventListener("hashchange", route);
+
+// ---------- Search ----------
+let query = "", type = "";
+function renderSearch() {
+  view.innerHTML = `<section class="view">
+    <div class="hero">
+      <h1>Skip the line,<br><em>everywhere.</em></h1>
+      <p>Find a clinic, barber, ski shop or restaurant, fill in their form from your couch, and walk straight in. Or tell the assistant what you need.</p>
+    </div>
+    <form class="searchbar" id="sform" role="search">
+      <input id="q" placeholder="Try ski, haircut, walk-in clinic..." value="${esc(query)}" autocomplete="off" aria-label="Search businesses">
+      <button>Search</button>
+    </form>
+    <div class="chiprow" id="types">
+      ${[["", "Everything"], ["clinic", "Clinics"], ["barber", "Barbers"], ["ski", "Ski"], ["restaurant", "Restaurants"], ["airport", "Travel"]]
+        .map(([t, l]) => `<button type="button" data-t="${t}" class="${t === type ? "on" : ""}">${l}</button>`).join("")}
+    </div>
+    <div class="cards" id="results"></div>
+  </section>`;
+  let timer;
+  $("#q").addEventListener("input", (e) => { query = e.target.value; clearTimeout(timer); timer = setTimeout(loadResults, 200); });
+  $("#sform").addEventListener("submit", (e) => { e.preventDefault(); loadResults(); });
+  $("#types").addEventListener("click", (e) => { const b = e.target.closest("[data-t]"); if (!b) return; type = b.dataset.t; document.querySelectorAll("#types button").forEach((x) => x.classList.toggle("on", x === b)); loadResults(); });
+  loadResults();
+}
+async function loadResults() {
+  const box = $("#results");
+  if (!box) return;
+  const { businesses } = await api(`/api/directory?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}`);
+  if (!businesses.length) { box.innerHTML = `<div class="empty" style="grid-column:1/-1"><b>Nothing here yet</b>Try another word, or ask the <a href="#assistant">assistant</a>.</div>`; return; }
+  box.innerHTML = businesses.map((b, i) => `
+    <a class="bcard" href="#b/${b.id}" style="--b:${esc(b.brand_color)};animation-delay:${i * 60}ms">
+      ${i === 0 && b.checkins_month ? '<span class="badge" style="align-self:flex-start;margin-bottom:6px">Most used</span>' : ""}
+      <h3>${esc(b.name)}</h3>
+      <div class="meta">${esc(b.business_type)}${b.city ? ` · ${esc(b.city)}` : ""}</div>
+      <div class="foot">
+        <div class="score">${b.ease.avg ? `<b>${b.ease.avg.toFixed(1)}</b><span>Ease · ${b.ease.count}</span>` : '<span>New on Formify</span>'}</div>
+        <span class="waitpill">${b.waiting ? `${b.waiting} waiting` : "No wait"}</span>
+      </div>
+      ${b.checkins_month ? `<div class="meta" style="text-transform:none;font-size:13px">${b.checkins_month} check-ins this month</div>` : ""}
+    </a>`).join("");
+}
+
+// ---------- Business page ----------
+async function renderBusiness(id) {
+  view.innerHTML = `<section class="view"><p class="muted">Loading...</p></section>`;
+  let data;
+  try { data = await api(`/api/kiosks/${encodeURIComponent(id)}`); } catch { view.innerHTML = `<div class="empty"><b>Not found</b><a href="#search">Back to search</a></div>`; return; }
+  const b = data.business;
+  track(id, "view");
+  const links = [[b.google_reviews, "Google reviews"], [b.instagram, "Instagram"], [b.website, "Website"]].filter(([u]) => u)
+    .map(([u, l]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${l}</a>`).join("");
+  const saved = Object.keys(prefillFor(data.config)).length;
+  view.innerHTML = `<section class="view" style="max-width:760px;margin:0 auto">
+    <button class="back" onclick="history.back()">&larr; Back</button>
+    <article class="sheet" style="--b:${esc(b.brand_color)}">
+      <div class="sheet-head"><div class="meta">${esc(b.business_type)}${b.city ? ` · ${esc(b.city)}` : ""}</div><h2>${esc(b.name)}</h2><div style="opacity:.9">${esc(b.welcome_subtitle)}</div></div>
+      <div class="sheet-body">
+        <div class="statrow">
+          <div><div class="v">${b.ease.avg ? b.ease.avg.toFixed(1) : "–"}</div><div class="l">Ease Score${b.ease.count ? ` · ${b.ease.count} ratings` : ""}</div></div>
+          <div><div class="v">${b.waiting || 0}</div><div class="l">waiting now</div></div>
+          <div><div class="v">~${(b.waiting || 0) * b.wait_minutes_per_visitor}</div><div class="l">minutes wait</div></div>
+        </div>
+        <div class="cta">
+          <a href="#checkin/${b.id}/chat"><button class="btn-big" style="width:100%">Check in with the assistant</button></a>
+          <a href="#checkin/${b.id}"><button class="btn-big btn-alt" style="width:100%">Fill the form myself</button></a>
+        </div>
+        <p class="muted small" style="margin:12px 0 0">${saved ? `${saved} detail${saved > 1 ? "s" : ""} from <a href="#you">your info</a> will be filled in for you. ` : ""}Ease Score is how easy visitors found checking in here.</p>
+        ${links ? `<div class="linkbtns">${links}</div>` : ""}
+      </div>
+    </article>
+  </section>`;
+}
+
+// ---------- Check-in (the business's own form, with its in-form assistant) ----------
+async function renderCheckin(id, chat) {
+  let data;
+  try { data = await api(`/api/kiosks/${encodeURIComponent(id)}`); } catch { location.hash = "search"; return; }
+  const { config } = data;
+  track(id, "start");
+  view.innerHTML = `<section class="view" style="max-width:760px;margin:0 auto">
+    <button class="back" onclick="history.back()">&larr; Back</button>
+    <article class="sheet" style="--b:${esc(config.brand_color)}">
+      <div class="sheet-head" style="padding-bottom:18px"><div class="meta">Checking in</div><h2 style="font-size:34px">${esc(config.name)}</h2></div>
+      <div class="sheet-body"><div id="kiosk"></div></div>
+    </article>
+  </section>`;
+  mountKiosk($("#kiosk"), config, {
+    mode: "phone", kioskId: id, startAt: "consent", preferChat: chat,
+    onSubmit: (body) => api(`/api/kiosks/${encodeURIComponent(id)}/checkins`, { method: "POST", body }),
+    onDone: (r) => { rememberVisit({ token: r.token, ticket: r.ticket, name: config.name }); location.href = `/visit.html#${r.token}`; }
+  });
+}
+
+// ---------- Assistant: find the place, then fill its form ----------
+const A = { phase: "find", log: [], cMsgs: [], shown: [], biz: null, config: null, aMsgs: [], answers: {}, language: "en", busy: false };
+const greet = () => A.log.length || A.log.push({ who: "bot", text: "Hi! Tell me what you need, like \"a haircut this afternoon\" or \"ski rentals for Saturday\", and I'll find the place and fill in their check-in for you." });
+
+function renderAssistant() {
+  greet();
+  view.innerHTML = `<section class="view assist">
+    <div class="chatcard">
+      <div class="chatlog" id="log" aria-live="polite"></div>
+      <div class="slotbar" id="slots"></div>
+      <form class="composer" id="compose">
+        <button type="button" class="mic" id="mic">Talk</button>
+        <input id="say" placeholder="What do you need?" autocomplete="off" aria-label="Message">
+        <button>Send</button>
+      </form>
+    </div>
+    <aside class="side">
+      <h3>Your check-in, handled.</h3>
+      <ul>
+        <li>Finds the business that fits, most used first.</li>
+        <li>Fills their form with what you say and <a href="#you" style="color:#f2c14e">your saved info</a>.</li>
+        <li>Shows you everything before anything is sent. You confirm, it checks you in.</li>
+      </ul>
+      <div class="try" style="margin-top:14px">${["I need a haircut today", "Ski rental for this weekend", "Walk-in clinic, sore throat"].map((t) => `<button type="button" data-try="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      ${A.biz ? `<button type="button" id="restart" style="margin-top:16px;background:transparent;border:1px solid rgba(255,255,255,.4)">Start over</button>` : ""}
+    </aside>
+  </section>`;
+  drawLog();
+  $("#compose").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#say").value.trim(); if (v) { $("#say").value = ""; send(v); } });
+  $("#mic").addEventListener("click", toggleMic);
+  view.querySelectorAll("[data-try]").forEach((b) => b.onclick = () => send(b.dataset.try));
+  $("#restart")?.addEventListener("click", () => { Object.assign(A, { phase: "find", log: [], cMsgs: [], shown: [], biz: null, config: null, aMsgs: [], answers: {} }); renderAssistant(); });
+}
+
+function drawLog() {
+  const log = $("#log");
+  if (!log) return;
+  log.innerHTML = A.log.map((m, i) => {
+    if (m.who === "pick") return `<div class="pick">${m.items.map((b) => `<button type="button" data-pick="${b.id}" style="--b:${esc(b.brand_color)}"><b>${esc(b.name)}</b><span>${b.ease.avg ? `Ease ${b.ease.avg.toFixed(1)} · ` : ""}${b.waiting ? `${b.waiting} waiting` : "no wait"}${b.city ? ` · ${esc(b.city)}` : ""}</span></button>`).join("")}</div>`;
+    if (m.who === "confirm") return confirmCard(i === A.log.length - 1);
+    if (m.who === "ticket") return `<div class="ticketcard"><div class="small" style="opacity:.8">You're checked in at ${esc(m.name)}</div><div class="t">${esc(m.ticket)}</div>
+      <div>Arrival code <b style="font-size:22px;letter-spacing:.2em">${esc(m.code)}</b> · type it at the kiosk or tap "I'm here" when you arrive.</div>
+      <div style="margin-top:10px"><a href="/visit.html#${esc(m.token)}">Live status and place in line &rarr;</a></div>
+      ${m.canSave ? `<button type="button" id="saveInfo" style="margin-top:12px;background:#fff;color:var(--forest)">Save my details for next time</button>` : ""}</div>`;
+    return `<div class="msg ${m.who === "me" ? "me" : "bot"}">${esc(m.text)}</div>`;
+  }).join("") + (A.busy ? '<div class="msg bot typing"><i></i><i></i><i></i></div>' : "");
+  log.scrollTop = log.scrollHeight;
+  log.querySelectorAll("[data-pick]").forEach((b) => b.onclick = () => choose(b.dataset.pick));
+  $("#confirmBtn")?.addEventListener("click", submitAssistant);
+  $("#editBtn")?.addEventListener("click", () => { location.hash = `checkin/${A.biz}`; });
+  $("#saveInfo")?.addEventListener("click", async () => {
+    const p = { ...profile() };
+    for (const s of A.config.steps) for (const f of s.fields) { const k = profileKey(f.label); if (k && A.answers[f.id]) p[k] = String(A.answers[f.id]); }
+    await saveProfile(p); toast("Saved to your info"); A.log.at(-1).canSave = false; drawLog();
+  });
+  const slots = $("#slots");
+  if (slots) slots.innerHTML = A.phase === "fill" && A.config ? A.config.steps.flatMap((s) => s.fields).map((f) => {
+    const v = A.answers[f.id], has = v !== undefined && v !== "" && v !== false;
+    return `<span class="slot${has ? " ok" : ""}${f.required && !has ? " need" : ""}">${esc(f.label)}</span>`;
+  }).join("") : "";
+}
+
+function confirmCard(live) {
+  const fields = A.config.steps.flatMap((s) => s.fields);
+  const rows = fields.filter((f) => A.answers[f.id] !== undefined && A.answers[f.id] !== "").map((f) => `<dt>${esc(f.label)}</dt><dd>${A.answers[f.id] === true ? "Yes" : A.answers[f.id] === false ? "No" : esc(A.answers[f.id])}</dd>`).join("");
+  return `<div class="confirm"><div style="font-family:var(--serif);font-size:22px">Ready to check in at ${esc(A.config.name)}?</div>
+    <dl>${rows}</dl><p class="muted small" style="margin:0 0 12px">${esc(A.config.consent_text)}</p>
+    ${live ? `<div class="row" style="gap:8px"><button type="button" id="confirmBtn">I agree, check me in</button><button type="button" id="editBtn" class="btn-alt">Edit in the form</button></div>` : ""}</div>`;
+}
+
+async function send(text) {
+  if (A.busy) return;
+  A.log.push({ who: "me", text });
+  A.busy = true; drawLog();
+  try {
+    if (A.phase === "find") {
+      A.cMsgs.push({ role: "user", content: text });
+      const r = await api("/api/concierge", { method: "POST", body: { messages: A.cMsgs, shown: A.shown.map((b) => ({ id: b.id, name: b.name, business_type: b.business_type })) } });
+      A.cMsgs.push({ role: "assistant", content: r.reply });
+      A.log.push({ who: "bot", text: r.reply });
+      if (r.results?.length) { A.shown = r.results; A.log.push({ who: "pick", items: r.results }); }
+      if (r.picked) { A.busy = false; return choose(r.picked); }
+    } else if (A.phase === "fill") {
+      await agentTurn(text);
+    } else {
+      A.log.push({ who: "bot", text: "You're all set here. Tap Start over to check in somewhere else." });
+    }
+  } catch (e) { A.log.push({ who: "bot", text: e.message }); }
+  A.busy = false; drawLog();
+}
+
+async function choose(id) {
+  A.busy = true; drawLog();
+  try {
+    const { config } = await api(`/api/kiosks/${encodeURIComponent(id)}`);
+    Object.assign(A, { phase: "fill", biz: id, config, answers: prefillFor(config), aMsgs: [] });
+    track(id, "start");
+    const n = Object.keys(A.answers).length;
+    await agentTurn(`I'd like to check in at ${config.name}.${n ? ` (Filled ${n} detail${n > 1 ? "s" : ""} from my saved info.)` : ""}`, { silent: true });
+  } catch (e) { A.log.push({ who: "bot", text: e.message }); }
+  A.busy = false; drawLog();
+  if (!$("#restart")) renderAssistant();
+}
+
+async function agentTurn(text, { silent = false } = {}) {
+  A.aMsgs.push({ role: "user", content: text });
+  const r = await api("/api/agent", { method: "POST", body: { id: A.biz, messages: A.aMsgs, answers: A.answers, language: A.language } });
+  Object.assign(A.answers, r.answers || {});
+  A.aMsgs.push({ role: "assistant", content: r.reply });
+  A.log.push({ who: "bot", text: r.reply });
+  if (!silent && A.lastVoice) speak(r.reply);
+  if (r.urgent) api(`/api/kiosks/${encodeURIComponent(A.biz)}/alerts`, { method: "POST", body: { kind: "emergency", message: text.slice(0, 300) } }).catch(() => {});
+  if (r.ready) { A.phase = "confirm"; A.log.push({ who: "confirm" }); }
+}
+
+async function submitAssistant() {
+  A.busy = true; drawLog();
+  try {
+    const r = await api(`/api/kiosks/${encodeURIComponent(A.biz)}/checkins`, { method: "POST", body: { answers: A.answers, consent: true, channel: "phone", language: A.language, via: ["assistant"] } });
+    rememberVisit({ token: r.token, ticket: r.ticket, name: A.config.name });
+    A.phase = "done";
+    const unsaved = A.config.steps.flatMap((s) => s.fields).some((f) => { const k = profileKey(f.label); return k && A.answers[f.id] && profile()[k] !== String(A.answers[f.id]); });
+    A.log.push({ who: "ticket", ticket: r.ticket, code: r.code, token: r.token, name: A.config.name, canSave: unsaved });
+  } catch (e) {
+    A.phase = "fill";
+    A.log.push({ who: "bot", text: `${e.message} Tell me and I'll fix it.` });
+  }
+  A.busy = false; drawLog();
+}
+
+// Voice for the assistant: record, transcribe (any language), send.
+let rec, recTimer;
+async function toggleMic() {
+  const btn = $("#mic");
+  if (rec?.state === "recording") { clearTimeout(recTimer); rec.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    rec = new MediaRecorder(stream);
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      btn.classList.remove("rec"); btn.textContent = "Talk";
+      const blob = new Blob(chunks, { type: rec.mimeType });
+      const audio = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1]); fr.readAsDataURL(blob); });
+      try {
+        const r = await api("/api/stt", { method: "POST", body: { audio } });
+        if (r.text) { A.language = r.language || A.language; A.lastVoice = true; send(r.text); } else toast("Didn't catch that. Try again.");
+      } catch (e) { toast(e.message); }
+    };
+    rec.start(); btn.classList.add("rec"); btn.textContent = "Stop";
+    recTimer = setTimeout(() => rec.state === "recording" && rec.stop(), 20000);
+  } catch { toast("Microphone not available. You can type instead."); }
+}
+async function speak(text) {
+  try {
+    if (A.language !== "en") { const u = new SpeechSynthesisUtterance(text); u.lang = A.language; speechSynthesis.speak(u); return; }
+    const r = await fetch("/api/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    if (r.ok) new Audio(URL.createObjectURL(await r.blob())).play();
+  } catch {}
+}
+
+// ---------- You ----------
+let authMode = "signup";
+function renderYou() {
+  const p = profile();
+  const visits = account.signedIn ? account.visits || [] : local.get("ks_visits", []);
+  view.innerHTML = `<section class="view">
+    <div class="hero" style="margin-bottom:18px"><h1 style="font-size:clamp(36px,5vw,58px)">Type it <em>once.</em></h1>
+      <p>Your details fill every Formify form for you. Businesses only get the fields their form asks for, and only when you check in.</p></div>
+    <div class="you">
+      <div class="panel">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 style="margin:0">Your info</h2>
+          <span class="lock">${account.signedIn ? `Encrypted in your account · ${esc(account.email)}` : "Saved on this device only"}</span></div>
+        <form id="pform">
+          <div class="row2">${PKEYS.map(([k, l]) => `<div><label for="p_${k}">${l}</label><input id="p_${k}" name="${k}" ${k === "dob" ? 'type="date"' : k === "email" ? 'type="email"' : k === "phone" ? 'type="tel"' : ""} value="${esc(p[k] || "")}"></div>`).join("")}</div>
+          <div class="row" style="margin-top:18px;justify-content:space-between"><button>Save</button>
+            <button type="button" class="ghost" id="wipe">${account.signedIn ? "Delete my account" : "Delete from this device"}</button></div>
+        </form>
+      </div>
+      <div style="display:grid;gap:22px">
+        <div class="panel">${account.signedIn ? `<h2>Signed in</h2><p class="muted">Your info and check-ins follow you to any device.</p><button type="button" class="btn-alt" id="signout">Sign out</button>` : `
+          <h2>Use it on every device</h2><p class="muted">Optional. Create an account and your info syncs, encrypted. Without one, it stays on this device.</p>
+          <div class="seg"><button type="button" data-mode="signup" class="${authMode === "signup" ? "on" : ""}">Create account</button><button type="button" data-mode="login" class="${authMode === "login" ? "on" : ""}">Sign in</button></div>
+          <form id="aform"><label for="a_email">Email</label><input id="a_email" type="email" autocomplete="email" required>
+            <label for="a_pass">Password</label><input id="a_pass" type="password" autocomplete="${authMode === "signup" ? "new-password" : "current-password"}" minlength="8" required>
+            <button style="margin-top:14px;width:100%">${authMode === "signup" ? "Create account and sync" : "Sign in"}</button><p class="k-err small" id="aerr"></p></form>`}</div>
+        <div class="panel"><h2>Recent check-ins</h2>
+          ${visits.length ? visits.map((v) => `<div class="visit-row"><div><b>${esc(v.name)}</b><div class="muted small">Ticket ${esc(v.ticket)} · ${new Date(v.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</div></div><a href="/visit.html#${esc(v.token)}" class="small">Status</a></div>`).join("")
+            : '<p class="muted" style="margin:0">Nothing yet. <a href="#search">Find a place</a> or ask the <a href="#assistant">assistant</a>.</p>'}</div>
+      </div>
+    </div>
+  </section>`;
+
+  $("#pform").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const next = {};
+    for (const [k] of PKEYS) { const v = $(`#p_${k}`).value.trim(); if (v) next[k] = v; }
+    try { await saveProfile(next); toast(account.signedIn ? "Saved to your account" : "Saved on this device"); } catch (err) { toast(err.message); }
+  });
+  let armed = false;
+  $("#wipe").addEventListener("click", async (e) => {
+    // Two taps to delete, so it can't happen by accident.
+    if (!armed) { armed = true; e.target.textContent = "Tap again to confirm"; e.target.style.color = "var(--clay)"; setTimeout(() => { armed = false; renderYou(); }, 4000); return; }
+    if (account.signedIn) { await api("/api/me/account", { method: "DELETE" }); account = { signedIn: false }; }
+    local.del("ks_profile"); local.del("ks_visits");
+    toast("Deleted"); renderYou();
+  });
+  $("#signout")?.addEventListener("click", async () => { await api("/api/me/logout", { method: "POST" }); account = { signedIn: false }; local.del("ks_profile"); toast("Signed out. Info removed from this device."); renderYou(); });
+  view.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => { authMode = b.dataset.mode; renderYou(); });
+  $("#aform")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { email: $("#a_email").value, password: $("#a_pass").value, profile: local.get("ks_profile", {}) };
+    try {
+      await api(`/api/me/${authMode}`, { method: "POST", body });
+      await loadAccount();
+      toast(authMode === "signup" ? "Account created. Your info is synced." : "Signed in");
+      renderYou();
+    } catch (err) { $("#aerr").textContent = err.message; }
+  });
+}
+
+await loadAccount();
+route();
