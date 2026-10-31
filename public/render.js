@@ -20,11 +20,13 @@ const writeProfile = (p) => { try { localStorage.setItem(PROFILE_KEY, JSON.strin
 function fieldHtml(f, value) {
   const req = f.required ? " required" : "";
   const v = value ?? "";
-  if (f.type === "checkbox") return `<label class="check"><input type="checkbox" name="${f.id}"${value ? " checked" : ""}> ${esc(f.label)}</label>`;
-  const label = `<label for="f_${f.id}">${esc(f.label)}${f.required ? "" : ' <span class="muted small">(optional)</span>'}</label>`;
-  if (f.type === "select") return label + `<select id="f_${f.id}" name="${f.id}"${req}><option value="">Choose one</option>${f.options.map((o) => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
-  if (f.type === "textarea") return label + `<textarea id="f_${f.id}" name="${f.id}" rows="3"${req}>${esc(v)}</textarea>`;
-  return label + `<input id="f_${f.id}" name="${f.id}" type="${f.type}" value="${esc(v)}"${req}${f.type === "number" ? ' min="0" inputmode="numeric"' : ""}>`;
+  const description = f.description ? `<p class="muted small" id="d_${f.id}" style="white-space:pre-wrap">${esc(f.description)}</p>` : "";
+  const described = f.description ? ` aria-describedby="d_${f.id}"` : "";
+  if (f.type === "checkbox") return `<label class="check"><input type="checkbox" name="${f.id}"${req}${described}${value ? " checked" : ""}> ${esc(f.label)}</label>${description}`;
+  const label = `<label for="f_${f.id}">${esc(f.label)}${f.required ? "" : ' <span class="muted small">(optional)</span>'}</label>${description}`;
+  if (f.type === "select") return label + `<select id="f_${f.id}" name="${f.id}"${req}${described}><option value="">Choose one</option>${f.options.map((o) => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  if (f.type === "textarea") return label + `<textarea id="f_${f.id}" name="${f.id}" rows="3"${req}${described}>${esc(v)}</textarea>`;
+  return label + `<input id="f_${f.id}" name="${f.id}" type="${f.type}" value="${esc(v)}"${req}${described}${f.type === "number" ? ' min="0" inputmode="numeric"' : ""}>`;
 }
 
 async function shrink(file, max = 1024) {
@@ -151,7 +153,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
         <div class="k-err">${esc(s.error)}</div>
         <div class="k-nav"><button class="k-btn ghost" data-go="welcome">Back</button><button class="k-btn" data-go="arrive">I'm here</button></div>`;
     } else if (s.screen === "consent") {
-      body = `<h2>Before we start</h2><p class="k-sub">${esc(config.consent_text)}</p>
+      body = `<h2>Before we start</h2><p class="k-sub" style="white-space:pre-wrap">${esc(config.consent_text)}</p>
         <label class="check"><input type="checkbox" id="consent"${s.consent ? " checked" : ""}> I agree</label>
         <div class="k-err">${esc(s.error)}</div>
         <div class="k-nav"><button class="k-btn ghost" data-go="welcome">Back</button><button class="k-btn" data-go="form">Continue</button></div>`;
@@ -159,6 +161,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       const st = config.steps[s.step];
       const dots = config.steps.map((_, i) => `<i class="${i <= s.step ? "on" : ""}"></i>`).join("");
       body = `<div class="dots">${dots}</div>${s.step === 0 ? aiBar() : ""}${s.note ? `<div class="ai-note">${esc(s.note)}</div>` : ""}<h2>${esc(st.title)}</h2>
+        ${st.description ? `<p class="k-sub" style="white-space:pre-wrap">${esc(st.description)}</p>` : ""}
         <form onsubmit="return false">${st.fields.map((f) => fieldHtml(f, s.answers[f.id])).join("")}</form>
         <div class="k-err">${esc(s.error)}</div>
         <div class="k-nav"><button class="k-btn ghost" data-go="back">Back</button><button class="k-btn" data-go="next">${s.step === config.steps.length - 1 ? "Check in" : "Next"}</button></div>`;

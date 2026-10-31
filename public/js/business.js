@@ -256,9 +256,9 @@ function renderForms() {
 }
 
 const TYPES = ["text", "tel", "email", "date", "number", "select", "checkbox", "textarea"];
-let draft = null, source = "";
+let draft = null, source = "", importWarnings = [];
 async function renderBuilder(id) {
-  draft = null; source = "";
+  draft = null; source = ""; importWarnings = [];
   shell("forms", `<button class="back" onclick="location.hash='forms'">&larr; Forms</button>
     <h1>${id ? "Edit form" : "New form"}</h1>
     ${id ? "" : `<div class="panel" style="margin:16px 0 22px">
@@ -268,16 +268,59 @@ async function renderBuilder(id) {
       <textarea id="prompt" rows="3" placeholder="Barbershop in Hamilton. Walk-ins pick a service and a barber, and we text them when their chair is ready."></textarea>
       <div class="chiprow" style="margin:12px 0">${[["Clinic", "Family clinic in Hamilton. Patients check in with their health card and date of birth, pick walk-in or booked appointment, and say why they're visiting."], ["Barber", "Barbershop. Walk-ins pick a service (haircut, fade, beard trim) and a preferred barber, and leave a phone number for a text."], ["Ski rental", "Ski and snowboard rental shop. Renters give height, weight, boot size, skier type and package, add a helmet, and accept the waiver."], ["Restaurant", "Busy noodle restaurant. Guests join the waitlist with party size and a phone number, and can pre-order a starter."]]
         .map(([l, t]) => `<button type="button" data-ex="${esc(t)}">${l}</button>`).join("")}</div>
-      <div class="row"><button id="gen" class="btn-big">Draft my form</button><span class="muted small" id="gstat"></span></div></div>`}
+      <div class="row"><button id="gen" class="btn-big">Draft my form</button><span class="muted small" id="gstat" role="status"></span></div></div>
+      <form id="document-import" class="panel" style="margin:16px 0 22px">
+        <h2 style="font-size:28px">Import a document</h2>
+        <p class="muted">Turn an existing document into an editable form. Review the draft before publishing.</p>
+        <label for="import-file">Document, up to 5 MB</label>
+        <input id="import-file" name="file" type="file" required accept=".pdf,.docx,.png,.jpg,.jpeg,.webp,.txt,.md,.csv,.xlsx,.odt" aria-describedby="import-help">
+        <p id="import-help" class="muted small">PDF, DOCX, PNG, JPEG, WebP, TXT, Markdown, CSV, XLSX or ODT. Up to 5 sections with 8 questions each. Files are sent to Cloudflare AI for processing; Formify does not save the original document.</p>
+        <label for="import-mode">What would you like to do?</label>
+        <select id="import-mode" name="mode"><option value="recreate">Recreate an existing form</option><option value="generate">Generate questions based on a document</option></select>
+        <div class="row" style="margin-top:16px"><button id="import-button" class="btn-big">Import document</button><span id="import-status" class="muted small" role="status" aria-live="polite"></span></div>
+      </form>`}
     <div id="editor" class="grid2" ${id ? "" : "hidden"} style="gap:22px"></div>`);
   root.querySelectorAll("[data-ex]").forEach((b) => b.onclick = () => { $("#prompt").value = b.dataset.ex; });
   $("#gen")?.addEventListener("click", async () => {
+    const button = $("#gen"), status = $("#gstat"), importButton = $("#import-button");
     const prompt = $("#prompt").value.trim();
     if (!prompt) return $("#prompt").focus();
-    $("#gen").disabled = true; $("#gstat").textContent = "Drafting your form...";
-    try { const r = await api("/api/generate", { method: "POST", body: { prompt } }); draft = r.config; source = r.source; $("#gstat").textContent = r.source === "ai" ? "Drafted by AI. Review it below." : "Started from a template."; openEditor(null); }
-    catch (e) { $("#gstat").textContent = e.message; }
-    $("#gen").disabled = false;
+    button.disabled = true; importButton.disabled = true; status.textContent = "Drafting your form...";
+    if ($("#save")) $("#save").disabled = true;
+    try {
+      const r = await api("/api/generate", { method: "POST", body: { prompt } });
+      if (!button.isConnected) return;
+      draft = r.config; source = r.source; importWarnings = [];
+      status.textContent = r.source === "ai" ? "Drafted by AI. Review it below." : "Started from a template.";
+      $("#import-status").textContent = ""; openEditor(null);
+    } catch (e) { if (button.isConnected) status.textContent = e.message; }
+    finally { button.disabled = false; importButton.disabled = false; if (button.isConnected && $("#save")) $("#save").disabled = false; }
+  });
+  $("#document-import")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget, button = $("#import-button"), status = $("#import-status"), gen = $("#gen");
+    const file = $("#import-file").files[0];
+    if (!file?.size) { status.textContent = "Choose a non-empty document."; return; }
+    if (file.size > 5 * 1024 * 1024) { status.textContent = "Choose a document smaller than 5 MB."; return; }
+    button.disabled = true; gen.disabled = true;
+    if ($("#save")) $("#save").disabled = true;
+    status.textContent = "Reading your document and drafting questions. This may take a minute...";
+    form.setAttribute("aria-busy", "true");
+    try {
+      const response = await fetch("/api/import", { method: "POST", body: new FormData(form) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not import the document. Try again.");
+      if (!form.isConnected) return;
+      draft = result.config; source = "document"; importWarnings = result.warnings || [];
+      status.textContent = `Imported ${file.name}. Review the draft and notes below.`;
+      $("#gstat").textContent = "";
+      openEditor(null);
+      $("#editor").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) { if (form.isConnected) status.textContent = error.message; }
+    finally {
+      button.disabled = false; gen.disabled = false; form.removeAttribute("aria-busy");
+      if (form.isConnected && $("#save")) $("#save").disabled = false;
+    }
   });
   if (id) { draft = (await api(`/api/kiosks/${id}`)).config; openEditor(id); }
 }
@@ -289,12 +332,17 @@ function openEditor(id) {
   ed.innerHTML = `<div class="panel">
       <h2 style="font-size:24px">Review before it goes live</h2>
       <p class="muted small">Sensitive fields are hidden from staff until revealed, and every reveal is logged.</p>
+      ${source === "document" ? `<section class="import-notes" aria-label="Document import review">
+        <strong>Check your imported form</strong>
+        <ul>${importWarnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>
+        <label class="check small"><input id="import-reviewed" type="checkbox" style="width:auto"> I compared the questions, choices and instructions with my document and reviewed these notes.</label>
+      </section>` : ""}
       <div class="step-title">What's your goal?</div>
       <div class="pbgrid" id="pbgrid"></div>
       <div id="levers"></div>
       <div class="grid2" style="gap:12px">${f("name", "Business name")}${f("brand_color", "Brand colour", 'type="color" style="height:44px;padding:4px"')}</div>
       <label>Welcome title</label><input data-k="welcome_title">
-      <label>Consent text visitors agree to</label><textarea data-k="consent_text" rows="2"></textarea>
+      <label>Consent text visitors agree to</label><textarea data-k="consent_text" rows="2" maxlength="4000"></textarea>
       <div class="grid2" style="gap:12px">${f("retention_days", "Delete data after (days)", 'type="number" min="1" max="365"')}${f("avg_service_minutes", "Minutes per visitor", 'type="number" min="1" max="120"')}</div>
       <label for="flowsel">How do customers come in? <span class="muted small">(set by your goal; change it if you need to)</span></label>
       <select data-k="flow" id="flowsel">
@@ -305,6 +353,7 @@ function openEditor(id) {
       </select>
       <p class="muted small" style="margin:4px 0 0">Formify adapts the customer's updates and your front desk to this. Keep using your booking or POS system; connect it in Settings.</p>
       <div id="fields"></div>
+      <button type="button" id="add-section" class="btn-alt small">Add a section</button>
       <div class="step-title">Public page</div>
       <div class="grid2" style="gap:12px">${f("city", "City", 'placeholder="Hamilton, ON"')}${f("instagram", "Instagram", 'placeholder="@yourbusiness"')}${f("google_reviews", "Google reviews link")}${f("website", "Website")}</div>
       <label class="check" style="font-weight:500"><input type="checkbox" data-k="listed" style="width:auto"> List in the Formify search</label>
@@ -313,10 +362,21 @@ function openEditor(id) {
     <div><div class="row" style="justify-content:space-between;margin-bottom:8px"><strong>Live preview</strong><span class="muted small">Try it, including the assistant</span></div>
       <div id="preview" class="panel" style="padding:0;overflow:hidden"></div></div>`;
   fill(); drawPlaybooks(); preview();
-  ed.addEventListener("input", onEdit);
-  ed.addEventListener("click", onLeverClick);
-  ed.addEventListener("change", (e) => { if (e.target.type === "checkbox" || e.target.tagName === "SELECT") preview(); });
+  ed.oninput = onEdit;
+  ed.onclick = onLeverClick;
+  ed.onchange = (e) => {
+    if (e.target.closest("#preview")) return;
+    if (e.target.dataset.f?.endsWith(".type")) fill();
+    if (e.target.type === "checkbox" || e.target.tagName === "SELECT") preview();
+  };
   $("#fields").addEventListener("click", (e) => {
+    const add = e.target.closest("[data-add-field]");
+    if (add) {
+      const fields = draft.steps[+add.dataset.addField].fields;
+      if (fields.length >= 8) return toast("Each section supports up to 8 questions.");
+      fields.push({ id: `field_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`, label: "New question", type: "text", required: false, sensitive: false });
+      fill(); preview(); return;
+    }
     const rm = e.target.closest("[data-rm]")?.dataset.rm;
     if (!rm) return;
     const [si, fi] = rm.split(".").map(Number);
@@ -324,7 +384,19 @@ function openEditor(id) {
     draft.steps = draft.steps.filter((s) => s.fields.length);
     fill(); preview();
   });
+  $("#add-section").onclick = () => {
+    if (draft.steps.filter((s) => s.auto !== "extras").length >= 5) return toast("A form supports up to 5 sections.");
+    draft.steps.push({ title: "New section", description: "", fields: [{ id: `field_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`, label: "New question", type: "text", required: false, sensitive: false }] });
+    fill(); preview();
+  };
   $("#save").addEventListener("click", async () => {
+    if (source === "document" && !$("#import-reviewed")?.checked) { $("#sstat").textContent = "Review the import notes and confirm you checked the draft before publishing."; $("#import-reviewed")?.focus(); return; }
+    if (!draft.steps.some((s) => s.fields.length)) { $("#sstat").textContent = "Add at least one question before publishing."; return; }
+    for (const field of draft.steps.flatMap((s) => s.fields)) {
+      if (field.type === "select" && (!field.options?.length || field.options.length > 12 || field.options.some((o) => o.length > 60))) {
+        $("#sstat").textContent = `Check choices for "${field.label}": use 1 to 12 choices, each up to 60 characters.`; return;
+      }
+    }
     $("#save").disabled = true;
     try {
       if (id) { await api(`/api/kiosks/${id}`, { method: "PUT", body: { config: draft } }); toast("Saved"); }
@@ -336,21 +408,29 @@ function openEditor(id) {
 }
 function fill() {
   document.querySelectorAll("#editor [data-k]").forEach((el) => { if (el.type === "checkbox") el.checked = draft[el.dataset.k] !== false; else el.value = draft[el.dataset.k] ?? ""; });
-  $("#fields").innerHTML = draft.steps.map((s, si) => `<div class="step-title">Step ${si + 1}: <input data-st="${si}" value="${esc(s.title)}" style="display:inline;width:auto;padding:5px 8px"></div>
-    ${s.fields.map((f, fi) => `<div class="field-row"><input data-f="${si}.${fi}.label" value="${esc(f.label)}">
+  $("#fields").innerHTML = draft.steps.map((s, si) => `<div class="step-title">Step ${si + 1}: <input data-st="${si}" maxlength="60" aria-label="Section ${si + 1} title" value="${esc(s.title)}" style="display:inline;width:auto;padding:5px 8px"></div>
+    <label class="small">Section instructions<textarea data-sd="${si}" rows="2" maxlength="2000">${esc(s.description || "")}</textarea></label>
+    ${s.fields.map((f, fi) => `<div class="field-row"><input data-f="${si}.${fi}.label" maxlength="80" aria-label="Question label" value="${esc(f.label)}">
       <select data-f="${si}.${fi}.type">${TYPES.map((t) => `<option${t === f.type ? " selected" : ""}>${t}</option>`).join("")}</select>
       <span class="row small" style="gap:10px"><label class="small" style="margin:0;font-weight:500"><input type="checkbox" data-f="${si}.${fi}.required" ${f.required ? "checked" : ""} style="width:auto"> required</label>
       <label class="small" style="margin:0;font-weight:500"><input type="checkbox" data-f="${si}.${fi}.sensitive" ${f.sensitive ? "checked" : ""} style="width:auto"> <span class="pill sens">sensitive</span></label></span>
-      <button class="x" data-rm="${si}.${fi}" title="Remove field" aria-label="Remove ${esc(f.label)}">&times;</button></div>`).join("")}`).join("");
+      <button class="x" data-rm="${si}.${fi}" title="Remove field" aria-label="Remove ${esc(f.label)}">&times;</button></div>
+      <div class="field-details">
+        <label class="small">Question instructions<textarea data-f="${si}.${fi}.description" rows="2" maxlength="2000">${esc(f.description || "")}</textarea></label>
+        ${f.type === "select" ? `<label class="small">Choices, one per line (up to 12)<textarea data-f="${si}.${fi}.options" rows="3">${esc((f.options || []).join("\n"))}</textarea></label>` : ""}
+      </div>`).join("")}
+    <button type="button" class="btn-alt small" data-add-field="${si}">Add a question</button>`).join("");
 }
 function onEdit(e) {
   const el = e.target;
+  if (el.closest("#preview") || el.id === "import-reviewed") return;
   if (el.dataset.k) draft[el.dataset.k] = el.type === "number" ? +el.value : el.type === "checkbox" ? el.checked : el.value;
   if (el.dataset.st) draft.steps[+el.dataset.st].title = el.value;
+  if (el.dataset.sd !== undefined) draft.steps[+el.dataset.sd].description = el.value;
   if (el.dataset.f) {
     const [si, fi, key] = el.dataset.f.split(".");
     const fld = draft.steps[si].fields[fi];
-    fld[key] = el.type === "checkbox" ? el.checked : el.value;
+    fld[key] = key === "options" ? el.value.split("\n").map((v) => v.trim()).filter(Boolean) : el.type === "checkbox" ? el.checked : el.value;
     if (key === "type" && fld.type === "select" && !fld.options?.length) fld.options = ["Option 1", "Option 2"];
   }
   if (el.dataset.lv) {

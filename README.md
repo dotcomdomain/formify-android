@@ -71,6 +71,45 @@ claude mcp add --transport http formify https://getformify.pages.dev/mcp
 Then ask Claude: "Find a ski rental on Formify and check me in for tomorrow."
 
 ## Deploy
+
+### Document import
+
+In Business > Forms > New form, choose **Import a document**. Recreate an existing
+form or generate questions based on a document. Owners and managers can import
+PDF, DOCX, PNG, JPEG, WebP, UTF-8 TXT/Markdown/CSV, XLSX and ODT files up to 5 MiB.
+Text-based imports are limited to 30,000 extracted characters. The existing form
+format supports five sections, eight questions per section and twelve choices per
+select. Oversized or incomplete conversion results return errors instead of
+silently truncating questions. Unsupported signatures, attachments and conditional
+logic are called out in review notes; they are not implemented by this importer.
+
+The importer uses the existing Workers AI binding: Markdown conversion for rich
+documents, Llama 4 Scout directly for images, and the text model for extracted
+content. It returns a draft to the existing editor, including editable section and
+question instructions, choice options and review notes. Publishing requires the
+owner to confirm they checked the draft. Imports default to forms-only mode with
+no deposits or add-ons. Scans and handwriting need careful review; encrypted PDFs
+and legacy `.doc` files should be exported to a supported format first.
+
+Formify does not persist uploaded originals or extracted text. Files are sent to
+Cloudflare AI for conversion, and only approved form configuration is saved at
+publish time. `migrations_010.sql` adds an atomic per-business limit of five import
+attempts per ten-minute window. Apply it **before deploying this feature**:
+
+```sh
+npx wrangler d1 execute kiosk-setup --remote --file migrations_010.sql
+```
+
+Local contract tests use mocked AI responses; they do not measure live extraction
+quality. Run them with Node 22+ and Python 3:
+
+```sh
+node --test tests/import.test.mjs
+python -m unittest discover -s tests -p "*_test.py"
+```
+
+### Publish
+
 ```
 npx wrangler pages deploy --branch main            # getformify.pages.dev
 npx wrangler pages deploy --branch main --project-name kiosk-setup   # old URL, keeps existing links working
