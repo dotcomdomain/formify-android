@@ -1,51 +1,17 @@
-import { handoffNote } from "../../../../lib/ai.js";
+import { createCheckin } from "../../../../lib/checkin.js";
 import { loadConfig, position } from "../../../../lib/queue.js";
 import { easeFor } from "../../../../lib/ease.js";
 
 const DAY = 86400000;
 
-const randomCode = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 9000 + 1000);
-const randomToken = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
-
 // Visitor checks in, on the kiosk (joins the queue now) or on their phone (joins when they arrive).
 export async function onRequestPost({ params, request, env, waitUntil }) {
   const config = await loadConfig(env, params.id);
   if (!config) return Response.json({ error: "Kiosk not found" }, { status: 404 });
-  const { answers, consent, channel, language, via } = await request.json().catch(() => ({}));
-  if (!consent) return Response.json({ error: "Consent is required." }, { status: 400 });
-
-  // Keep only fields the config defines, so the kiosk can't be used to store anything else.
-  const clean = {};
-  for (const step of config.steps) for (const f of step.fields) {
-    const v = answers?.[f.id];
-    if (f.required && (v === undefined || v === "" || v === false)) return Response.json({ error: `${f.label} is required.` }, { status: 400 });
-    if (v !== undefined && v !== "") clean[f.id] = f.type === "checkbox" ? !!v : String(v).slice(0, 500);
-  }
-
-  const phone = channel === "phone";
-  const how = [phone ? "phone" : "kiosk", ...(Array.isArray(via) ? via.filter((v) => v === "voice" || v === "scan") : [])].join(", ");
-  const lang = /^[a-z]{2}$/.test(language) ? language : "en";
-
-  const start = new Date(); start.setHours(0, 0, 0, 0);
-  const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM checkins WHERE kiosk_id = ? AND created_at >= ?").bind(params.id, start.getTime()).first();
-  const ticket = `${config.ticket_prefix}${String(n + 1).padStart(3, "0")}`;
-  const now = Date.now();
-  const token = randomToken(), code = randomCode();
-  const status = phone ? "pending" : "waiting";
-  const { meta } = await env.DB.prepare(
-    "INSERT INTO checkins (kiosk_id, ticket, answers, status, created_at, arrived_at, token, code, channel, language) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(params.id, ticket, JSON.stringify(clean), status, now, phone ? null : now, token, code, how, lang).run();
-
-  // The note is written in the background so the visitor never waits on it.
-  waitUntil((async () => {
-    try {
-      const note = await handoffNote(env, config, clean, { channel: how, language: lang });
-      await env.DB.prepare("UPDATE checkins SET summary = ?, flags = ? WHERE id = ?").bind(note.summary, JSON.stringify(note.flags), meta.last_row_id).run();
-    } catch {}
-  })());
-
-  const pos = await position(env, params.id, { status, arrived_at: now }, config);
-  return Response.json({ ticket, token, code: phone ? code : undefined, ...pos });
+  const body = await request.json().catch(() => ({}));
+  const result = await createCheckin(env, waitUntil, params.id, config, { ...body, channel: body.channel === "phone" ? "phone" : "kiosk" });
+  if (result.error) return Response.json(result, { status: 400 });
+  return Response.json(result);
 }
 
 // Dashboard: queue, today's numbers, audit log. Sensitive answers are masked unless revealed.
@@ -58,7 +24,7 @@ export async function onRequestGet({ params, request, env }) {
 
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const { results } = await env.DB.prepare(
-    "SELECT id, ticket, answers, status, created_at, arrived_at, served_at, channel, language, summary, flags FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY COALESCE(arrived_at, created_at)"
+    "SELECT id, ticket, answers, status, created_at, arrived_at, served_at, channel, language, summary, flags, amount_cents, paid_at, pay_method FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY COALESCE(arrived_at, created_at)"
   ).bind(params.id, start.getTime() - DAY).all();
   const audit = (await env.DB.prepare("SELECT action, detail, at FROM audit WHERE kiosk_id = ? ORDER BY at DESC LIMIT 30").bind(params.id).all()).results;
 
@@ -76,5 +42,9 @@ export async function onRequestGet({ params, request, env }) {
   const ease = await easeFor(env, params.id);
   const feedback = (await env.DB.prepare("SELECT r.score, r.comment, r.at, c.ticket FROM ratings r JOIN checkins c ON c.id = r.checkin_id WHERE r.kiosk_id = ? ORDER BY r.at DESC LIMIT 8")
     .bind(params.id).all()).results;
-  return Response.json({ config, checkins, audit, ease, feedback });
+  const alerts = (await env.DB.prepare("SELECT id, kind, message, ticket, at FROM alerts WHERE kiosk_id = ? AND ack_at IS NULL AND at > ? ORDER BY at DESC")
+    .bind(params.id, Date.now() - 3 * 3600000).all()).results;
+  const month = Date.now() - 30 * DAY;
+  const counts = Object.fromEntries((await env.DB.prepare("SELECT type, COUNT(*) AS n FROM events WHERE kiosk_id = ? AND at > ? GROUP BY type").bind(params.id, month).all()).results.map((r) => [r.type, r.n]));
+  return Response.json({ config, checkins, audit, ease, feedback, alerts, funnel: { views: counts.view || 0, starts: counts.start || 0, checkins: counts.checkin || 0 } });
 }

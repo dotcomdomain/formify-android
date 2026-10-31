@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Check-in">
+<meta name="apple-mobile-web-app-title" content="Formify">
 <meta name="theme-color" content="#0f766e">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -23,6 +23,7 @@ if (!r?.ok) {
   root.innerHTML = '<p style="padding:30px">Scan the QR code at the front desk to check in.</p>';
 } else {
   const { config } = await r.json();
+  fetch(`/api/kiosks/${encodeURIComponent(id)}/events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "start" }) }).catch(() => {});
   document.title = `Check in · ${config.name}`;
   mountKiosk(root, config, {
     mode: "phone",

@@ -1,7 +1,7 @@
 {
-  "name": "Kiosk Setup Check-in",
-  "short_name": "Check-in",
-  "start_url": "/go.html",
+  "name": "Formify",
+  "short_name": "Formify",
+  "start_url": "/find.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0f766e",

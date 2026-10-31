@@ -146,3 +146,12 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-
 .kiosk.phone .chat { max-height: 52vh; }
 .kiosk.phone .chat-wrap .row .k-btn { width: auto; flex: 1; }
 .urgent-banner { background: #dc2626; color: #fff; font-weight: 700; font-size: 18px; padding: 14px 16px; border-radius: 10px; margin-bottom: 10px; }
+.help-btn { background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.5); padding: 7px 14px; font-size: 14px; }
+.alert-bar { display: flex; align-items: center; gap: 14px; background: #dc2626; color: #fff; padding: 14px 18px; border-radius: 12px; margin-bottom: 12px; font-weight: 600; animation: flash 1.2s ease-in-out 3; }
+.alert-bar.help { background: #d97706; }
+.alert-bar button { background: #fff; color: #111; margin-left: auto; }
+@keyframes flash { 50% { filter: brightness(1.25); } }
+.pay-box { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.pay-box input { width: 90px; padding: 6px 8px; }
+.pill.payment { background: #ede9fe; color: #5b21b6; }
+.pill.ok { background: #dcfce7; color: #166534; }

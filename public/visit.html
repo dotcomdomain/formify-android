@@ -43,18 +43,26 @@ async function load() {
     pending: ["You're checked in", "Show the code at the kiosk when you arrive, or tap the button once you're inside."],
     waiting: [d.ahead ? `${d.ahead} ahead of you` : "You're next", d.wait_minutes ? `About ${d.wait_minutes} minutes. We'll call your number.` : "We'll call your number shortly."],
     serving: ["It's your turn", "Please go to the front desk now."],
-    done: ["All done", "Thanks for checking in."],
+    payment: [`Your total is $${((d.amount_cents || 0) / 100).toFixed(2)}`, "Pay here on your phone, or at the counter."],
+    done: [d.paid_at ? `Paid $${((d.amount_cents || 0) / 100).toFixed(2)}` : "All done", d.paid_at ? (d.pay_method === "phone" ? "Paid from your phone. Thanks for coming in!" : "Paid at the counter. Thanks for coming in!") : "Thanks for checking in."],
     "no-show": ["Check-in closed", "Please see the front desk."]
   };
   const [title, sub] = states[d.status] || states.done;
   v.innerHTML = `<p class="muted">Your number</p><div class="big">${esc(d.ticket)}</div>
     <div class="state">${esc(title)}</div><p class="muted">${esc(sub)}</p>
+    ${d.status === "payment" ? `<button id="pay">Pay $${((d.amount_cents || 0) / 100).toFixed(2)}</button><p class="muted small" style="margin-top:8px">Demo payment: no card is charged.</p>` : ""}
     ${d.status === "pending" ? `<div class="box"><div class="muted small">Arrival code</div><div class="code">${esc(d.code)}</div><div class="muted small">Type this at the kiosk, or:</div></div>
       <button id="here">I'm here</button>` : ""}
     <p class="muted small" style="margin-top:28px">Keep this page open. It updates on its own. Tip: Share, then "Add to Home Screen" to check in faster next time.</p>`;
   document.getElementById("here")?.addEventListener("click", async (e) => {
     e.target.disabled = true;
     await fetch(`/api/visit/${encodeURIComponent(token)}`, { method: "POST" });
+    load();
+  });
+  document.getElementById("pay")?.addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = "Paying...";
+    await fetch(`/api/visit/${encodeURIComponent(token)}/pay`, { method: "POST" });
     load();
   });
   showRating(d);

@@ -12,16 +12,18 @@
 </head>
 <body>
 <div class="nav">
-  <a class="logo" href="/find.html" style="text-decoration:none;color:inherit">Kiosk<span>Setup</span></a>
+  <a class="logo" href="/find.html" style="text-decoration:none;color:inherit">Form<span>ify</span></a>
   <nav><a href="/find.html" class="on">Find</a><a href="/me.html">My info</a><a href="/">For businesses</a></nav>
 </div>
 <div class="wrap" style="padding-top:8px">
   <h1 style="font-size:28px">Check in anywhere, before you get there</h1>
+  <p class="small" style="margin:-4px 0 10px;font-weight:700;color:var(--brand)">Fortify your business with Formify. <a href="/">List yours free</a></p>
   <p class="muted">Search clinics, restaurants and service desks. Fill in their form on your phone and skip the line. Ease Score is how easy other visitors said each place was to deal with.</p>
-  <div class="search"><input id="q" placeholder="Search by name, type or city" autocomplete="off"></div>
+  <div class="search"><input id="q" placeholder="Try ski, haircut, walk-in clinic, Hamilton..." autocomplete="off"></div>
   <div class="chips" id="types">
     <button class="chip" data-t="">All</button><button class="chip" data-t="clinic">Clinics</button>
     <button class="chip" data-t="restaurant">Restaurants</button><button class="chip" data-t="airport">Airports</button>
+    <button class="chip" data-t="ski">Ski</button><button class="chip" data-t="barber">Barbers</button>
   </div>
   <div class="biz-grid" id="list"></div>
   <p id="none" class="muted" hidden>No businesses match that yet.</p>
@@ -35,7 +37,7 @@ async function load() {
   const r = await fetch(`/api/directory?q=${encodeURIComponent($("#q").value)}&type=${encodeURIComponent(type)}`);
   const { businesses } = await r.json();
   $("#none").hidden = businesses.length > 0;
-  $("#list").innerHTML = businesses.map((b) => `
+  $("#list").innerHTML = businesses.map((b, i) => `
     <a class="card biz" href="/b.html?id=${b.id}" style="--b:${esc(b.brand_color)}">
       <h3>${esc(b.name)}</h3>
       <div class="muted small" style="text-transform:capitalize">${esc(b.business_type)}${b.city ? ` · ${esc(b.city)}` : ""}</div>
@@ -43,6 +45,7 @@ async function load() {
         <span class="ease">${b.ease.avg ? `<span class="n">${b.ease.avg.toFixed(1)}</span><span class="l">Ease · ${b.ease.count} rating${b.ease.count > 1 ? "s" : ""}</span>` : '<span class="l">New · no ratings yet</span>'}</span>
         <span class="muted small">${b.waiting ? `${b.waiting} waiting` : "No wait"}</span>
       </div>
+      <div class="muted small" style="margin-top:8px">${b.checkins_month ? `${b.checkins_month} check-in${b.checkins_month > 1 ? "s" : ""} this month` : ""}${i === 0 && b.checkins_month ? ' · <strong style="color:var(--b)">Most used</strong>' : ""}</div>
     </a>`).join("");
 }
 $("#q").addEventListener("input", () => { clearTimeout(t); t = setTimeout(load, 200); });

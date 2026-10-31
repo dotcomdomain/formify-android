@@ -115,7 +115,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     const ready = !fields.some(isMissing);
     const saved = profileMatches();
     return `<div class="chat-wrap">
-      ${s.urgent ? '<div class="urgent-banner">If this is an emergency, tell a staff member now or call 911.</div>' : ""}
+      ${s.urgent ? `<div class="urgent-banner">${kioskId ? "Staff have been alerted. " : ""}If this is an emergency, tell a staff member now or call 911.</div>` : ""}
       <div class="chat" id="chatLog">${bubbles}</div>
       <div class="slots">${filled}</div>
       <form class="chat-in" onsubmit="return false">
@@ -136,7 +136,8 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   }
 
   function draw() {
-    const head = `<div class="k-head"><span>${esc(config.name)}</span><span class="small" style="opacity:.85">${phone ? "Check in from your phone" : "Self check-in"}</span></div>`;
+    const helpBtn = mode === "kiosk" ? `<button class="help-btn" data-go="help">${s.helpSent ? "Staff notified" : "Need help?"}</button>` : `<span class="small" style="opacity:.85">${phone ? "Check in from your phone" : "Self check-in"}</span>`;
+    const head = `<div class="k-head"><span>${esc(config.name)}</span>${helpBtn}</div>`;
     let body = "";
     if (s.screen === "welcome") {
       const qr = mode === "kiosk" && qrUrl ? `<div class="qr-box"><div id="qr"></div><div><strong>Skip the line</strong><div class="muted small">Scan with your phone camera to check in before you get to the desk.</div></div></div>` : "";
@@ -191,6 +192,12 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     }
   }
 
+  // Staff alert goes to the dashboard instantly. Only the message that triggered it is sent.
+  function alertStaff(kind, message) {
+    if (!kioskId) return;
+    fetch(`/api/kiosks/${encodeURIComponent(kioskId)}/alerts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind, message: String(message || "").slice(0, 300) }) }).catch(() => {});
+  }
+
   // Assistant chat: each turn sends the conversation and current answers; the server returns
   // a reply plus any fields it could fill. The visitor still reviews and submits.
   function openChat() {
@@ -209,7 +216,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       Object.assign(s.answers, r.answers || {});
       if (Object.keys(r.answers || {}).length) s.via.add(voice ? "voice" : "assistant");
       s.chat.push({ role: "assistant", content: r.reply });
-      if (r.urgent) s.urgent = true;
+      if (r.urgent) { s.urgent = true; alertStaff("emergency", t); }
       if (voice || r.urgent) speak(r.reply, s.language);
     } catch (e) { s.error = e.message; }
     s.thinking = false;
@@ -332,6 +339,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     }
     if (go === "mic") { collect(visibleFields()); return s.recording ? stopRec() : startRec(); }
     if (go === "chat") { collect(visibleFields()); return openChat(); }
+    if (go === "help") { alertStaff("help", "Visitor tapped Need help on the kiosk"); s.helpSent = true; setTimeout(() => { s.helpSent = false; draw(); }, 30000); return draw(); }
     if (go === "chatmic") return s.recording ? stopRec() : startRec();
     if (go === "send") return chatSend(root.querySelector("#msg")?.value);
     if (go === "useprofile") {

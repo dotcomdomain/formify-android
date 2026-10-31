@@ -12,7 +12,7 @@
 </head>
 <body>
 <div class="nav">
-  <a class="logo" href="/find.html" style="text-decoration:none;color:inherit">Kiosk<span>Setup</span></a>
+  <a class="logo" href="/find.html" style="text-decoration:none;color:inherit">Form<span>ify</span></a>
   <nav><a href="/find.html">Find</a><a href="/me.html">My info</a><a href="/">For businesses</a></nav>
 </div>
 <div class="wrap" style="max-width:720px;padding-top:8px" id="page"><p class="muted">Loading...</p></div>
@@ -24,6 +24,7 @@ const r = await fetch(`/api/kiosks/${encodeURIComponent(id)}`);
 if (!r.ok) page.innerHTML = '<p>Business not found. <a href="/find.html">Search again</a></p>';
 else {
   const { business: b } = await r.json();
+  fetch(`/api/kiosks/${encodeURIComponent(id)}/events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "view" }) }).catch(() => {});
   document.title = b.name;
   document.documentElement.style.setProperty("--brand", b.brand_color);
   const wait = b.waiting ? `${b.waiting} waiting now · about ${b.waiting * b.wait_minutes_per_visitor} min` : "No wait right now";
