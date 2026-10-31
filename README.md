@@ -70,7 +70,76 @@ claude mcp add --transport http formify https://getformify.pages.dev/mcp
 ```
 Then ask Claude: "Find a ski rental on Formify and check me in for tomorrow."
 
+## Live CRM insights
+
+Business > Insights reads live D1 records for the selected location, refreshes every
+30 seconds while visible, and supports 7-, 30- and 90-day windows. It shows visit
+volume and completion, identified customer cohorts, wait times, payment records,
+no-shows, private feedback, check-in channels and anonymous form activity. Follow-up
+cards and a ticket list highlight unread messages, deletion requests, unpaid visits,
+low ratings and pickups ready to complete. Actions open Live for staff to review;
+no customer messages are sent automatically.
+
+`GET /api/kiosks/:id/insights?days=30` requires an owner or manager of that business.
+Queries exclude expired and future visit records, keep data isolated by location,
+and aggregate customer IDs without returning form answers. Charts use UTC and
+include partial days. Repeat customers are signed-in accounts with multiple visit
+records in retained history; anonymous visits are not counted as distinct customers.
+Previous-period comparisons appear only when the full previous period is within
+retention and the location already existed. Missing averages show no value rather
+than a fabricated zero.
+
+Payments are CAD amounts recorded against visits created in the selected period,
+including counter entries and demo/test transactions. Deposits are separate from
+final totals. Anonymous event counts are not presented as a session conversion
+rate, and rebook clicks are not confirmed bookings. CSV export now honors both
+the selected period and the form's retention setting.
+
+No new analytics migration is needed beyond the existing schema through migration
+009. Document import separately requires migration 010 below. SQL tests execute
+the production queries against SQLite with migrated fixtures covering period
+boundaries, business isolation, customer cohorts and follow-up counts.
+
 ## Deploy
+
+### Document import
+
+In Business > Forms > New form, choose **Import a document**. Recreate an existing
+form or generate questions based on a document. Owners and managers can import
+PDF, DOCX, PNG, JPEG, WebP, UTF-8 TXT/Markdown/CSV, XLSX and ODT files up to 5 MiB.
+Text-based imports are limited to 30,000 extracted characters. The existing form
+format supports five sections, eight questions per section and twelve choices per
+select. Oversized or incomplete conversion results return errors instead of
+silently truncating questions. Unsupported signatures, attachments and conditional
+logic are called out in review notes; they are not implemented by this importer.
+
+The importer uses the existing Workers AI binding: Markdown conversion for rich
+documents, Llama 4 Scout directly for images, and the text model for extracted
+content. It returns a draft to the existing editor, including editable section and
+question instructions, choice options and review notes. Publishing requires the
+owner to confirm they checked the draft. Imports default to forms-only mode with
+no deposits or add-ons. Scans and handwriting need careful review; encrypted PDFs
+and legacy `.doc` files should be exported to a supported format first.
+
+Formify does not persist uploaded originals or extracted text. Files are sent to
+Cloudflare AI for conversion, and only approved form configuration is saved at
+publish time. `migrations_010.sql` adds an atomic per-business limit of five import
+attempts per ten-minute window. Apply it **before deploying this feature**:
+
+```sh
+npx wrangler d1 execute kiosk-setup --remote --file migrations_010.sql
+```
+
+Local contract tests use mocked AI responses; they do not measure live extraction
+quality. Run them with Node 22+ and Python 3:
+
+```sh
+node --test tests/*.test.mjs
+python -m unittest discover -s tests -p "*_test.py"
+```
+
+### Publish
+
 ```
 npx wrangler pages deploy --branch main            # getformify.pages.dev
 npx wrangler pages deploy --branch main --project-name kiosk-setup   # old URL, keeps existing links working

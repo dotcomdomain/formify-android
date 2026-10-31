@@ -1,6 +1,7 @@
 // Formify for Business. Hash routes: #live #forms #forms/new #forms/<id> #insights #settings
 import { mountKiosk } from "/render.js";
 import { theme, setTheme } from "/js/theme.js";
+import { renderInsightsView } from "/js/insights.js";
 
 const root = document.getElementById("root");
 const $ = (s, el = document) => el.querySelector(s);
@@ -310,9 +311,9 @@ async function sendInvite(id) {
 
 const TYPES = ["text", "tel", "email", "date", "number", "select", "checkbox", "textarea"];
 const TYPE_LABEL = { text: "Short answer", tel: "Phone", email: "Email", date: "Date", number: "Number", select: "Choice", checkbox: "Checkbox", textarea: "Long answer" };
-let draft = null, source = "";
+let draft = null, source = "", importWarnings = [];
 async function renderBuilder(id) {
-  draft = null; source = "";
+  draft = null; source = ""; importWarnings = [];
   shell("forms", `<button class="back" onclick="location.hash='forms'">&larr; Forms</button>
     <h1>${id ? "Edit form" : "New form"}</h1>
     ${id ? "" : `<div class="panel" style="margin:16px 0 22px">
@@ -322,16 +323,59 @@ async function renderBuilder(id) {
       <textarea id="prompt" rows="3" placeholder="Independent auto repair shop in Hamilton. Customers drop off cars for brakes and diagnostics."></textarea>
       <div class="chiprow" style="margin:12px 0">${[["Auto repair", "Independent auto repair shop in Hamilton. Customers drop off cars for brakes, oil changes and diagnostics."], ["Adventure park waiver", "Treetop adventure park waiver for visitors, with emergency contact and medical notes."], ["Event registration", "Event registration for a charity gala with guests and dietary needs."], ["Motel check-in", "Small motel guest check-in before arrival."], ["Clinic intake", "New patient intake for a physiotherapy clinic."], ["Staff onboarding", "Staff onboarding form for new hires at my shop. I need their contact details, start date, role and emergency contact."]]
         .map(([l, t]) => `<button type="button" data-ex="${esc(t)}">${l}</button>`).join("")}</div>
-      <div class="row"><button id="gen" class="btn-big">Draft my form</button><span class="muted small" id="gstat"></span></div></div>`}
+      <div class="row"><button id="gen" class="btn-big">Draft my form</button><span class="muted small" id="gstat" role="status"></span></div></div>
+      <form id="document-import" class="panel" style="margin:16px 0 22px">
+        <h2 style="font-size:28px">Import a document</h2>
+        <p class="muted">Turn an existing document into an editable form. Review the draft before publishing.</p>
+        <label for="import-file">Document, up to 5 MB</label>
+        <input id="import-file" name="file" type="file" required accept=".pdf,.docx,.png,.jpg,.jpeg,.webp,.txt,.md,.csv,.xlsx,.odt" aria-describedby="import-help">
+        <p id="import-help" class="muted small">PDF, DOCX, PNG, JPEG, WebP, TXT, Markdown, CSV, XLSX or ODT. Up to 5 sections with 8 questions each. Files are sent to Cloudflare AI for processing; Formify does not save the original document.</p>
+        <label for="import-mode">What would you like to do?</label>
+        <select id="import-mode" name="mode"><option value="recreate">Recreate an existing form</option><option value="generate">Generate questions based on a document</option></select>
+        <div class="row" style="margin-top:16px"><button id="import-button" class="btn-big">Import document</button><span id="import-status" class="muted small" role="status" aria-live="polite"></span></div>
+      </form>`}
     <div id="editor" class="grid2" ${id ? "" : "hidden"} style="gap:22px"></div>`);
   root.querySelectorAll("[data-ex]").forEach((b) => b.onclick = () => { $("#prompt").value = b.dataset.ex; });
   $("#gen")?.addEventListener("click", async () => {
+    const button = $("#gen"), status = $("#gstat"), importButton = $("#import-button");
     const prompt = $("#prompt").value.trim();
     if (!prompt) return $("#prompt").focus();
-    $("#gen").disabled = true; $("#gstat").textContent = "Drafting your form...";
-    try { const r = await api("/api/generate", { method: "POST", body: { prompt } }); draft = r.config; source = r.source; $("#gstat").textContent = r.source === "ai" ? "Drafted by AI. Review it below." : "Started from a template."; openEditor(null); }
-    catch (e) { $("#gstat").textContent = e.message; }
-    $("#gen").disabled = false;
+    button.disabled = true; importButton.disabled = true; status.textContent = "Drafting your form...";
+    if ($("#save")) $("#save").disabled = true;
+    try {
+      const r = await api("/api/generate", { method: "POST", body: { prompt } });
+      if (!button.isConnected) return;
+      draft = r.config; source = r.source; importWarnings = [];
+      status.textContent = r.source === "ai" ? "Drafted by AI. Review it below." : "Started from a template.";
+      $("#import-status").textContent = ""; openEditor(null);
+    } catch (e) { if (button.isConnected) status.textContent = e.message; }
+    finally { button.disabled = false; importButton.disabled = false; if (button.isConnected && $("#save")) $("#save").disabled = false; }
+  });
+  $("#document-import")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget, button = $("#import-button"), status = $("#import-status"), gen = $("#gen");
+    const file = $("#import-file").files[0];
+    if (!file?.size) { status.textContent = "Choose a non-empty document."; return; }
+    if (file.size > 5 * 1024 * 1024) { status.textContent = "Choose a document smaller than 5 MB."; return; }
+    button.disabled = true; gen.disabled = true;
+    if ($("#save")) $("#save").disabled = true;
+    status.textContent = "Reading your document and drafting questions. This may take a minute...";
+    form.setAttribute("aria-busy", "true");
+    try {
+      const response = await fetch("/api/import", { method: "POST", body: new FormData(form) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not import the document. Try again.");
+      if (!form.isConnected) return;
+      draft = result.config; source = "document"; importWarnings = result.warnings || [];
+      status.textContent = `Imported ${file.name}. Review the draft and notes below.`;
+      $("#gstat").textContent = "";
+      openEditor(null);
+      $("#editor").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) { if (form.isConnected) status.textContent = error.message; }
+    finally {
+      button.disabled = false; gen.disabled = false; form.removeAttribute("aria-busy");
+      if (form.isConnected && $("#save")) $("#save").disabled = false;
+    }
   });
   if (id) { draft = (await api(`/api/kiosks/${id}`)).config; openEditor(id); }
 }
@@ -345,11 +389,16 @@ function openEditor(id) {
   ed.innerHTML = `<div class="bldmain">
       <div class="bldhead"><div><h2>${id ? "Edit your form" : "Your form is ready"}</h2><p class="muted">Check the questions, try the preview, then publish.</p></div>
         <div class="bldact"><button id="save" class="btn-big">${id ? "Save changes" : "Publish form"}</button><span class="muted small" id="sstat"></span></div></div>
+      ${source === "document" ? `<section class="import-notes" aria-label="Document import review">
+        <strong>Check your imported form</strong>
+        <ul>${importWarnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>
+        <label class="check small"><input id="import-reviewed" type="checkbox" style="width:auto"> I compared the questions, choices and instructions with my document and reviewed these notes.</label>
+      </section>` : ""}
       <div class="panel bldform">
         <input class="bldtitle" data-k="welcome_title" aria-label="Form title">
         <input class="bldsub" data-k="welcome_subtitle" aria-label="Form description">
         <div id="fields"></div>
-        <button type="button" class="btn-alt" id="addq">Add a question</button>
+        <div class="row" style="gap:10px"><button type="button" class="btn-alt" id="addq">Add a question</button><button type="button" class="btn-alt" id="add-section">Add a section</button></div>
       </div>
       <details class="bldsec"><summary>Goal and flow</summary>
         <div class="pbgrid" id="pbgrid"></div>
@@ -375,25 +424,34 @@ function openEditor(id) {
     <aside class="bldside"><div class="row" style="justify-content:space-between;margin-bottom:10px"><strong>Live preview</strong><span class="muted small">Try it like a customer</span></div>
       <div class="bldphone"><div id="preview"></div></div></aside>`;
   fill(); drawPlaybooks(); preview();
-  ed.addEventListener("input", onEdit);
-  ed.addEventListener("click", onLeverClick);
-  ed.addEventListener("change", (e) => {
-    const type = e.target.dataset.f?.endsWith(".type");
-    if (type) {
+  ed.oninput = onEdit;
+  ed.onclick = onLeverClick;
+  ed.onchange = (e) => {
+    if (e.target.closest("#preview")) return;
+    if (e.target.dataset.f?.endsWith(".type")) {
       const [si, fi] = e.target.dataset.f.split(".").map(Number);
       const q = draft.steps[si].fields[fi];
       if (q.type === "select" && !q.options?.length) q.options = ["Option 1", "Option 2"];
       fill();
     }
     if (e.target.type === "checkbox" || e.target.tagName === "SELECT") preview();
-  });
+  };
   $("#addq").addEventListener("click", () => {
     if (!draft.steps.length) draft.steps.push({ title: "Your details", fields: [] });
-    draft.steps.at(-1).fields.push({ id: `q_${Date.now()}`, label: "New question", type: "text", required: false, sensitive: false });
+    const fields = draft.steps.at(-1).fields;
+    if (fields.length >= 8) return toast("Each section supports up to 8 questions.");
+    fields.push({ id: `field_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`, label: "New question", type: "text", required: false, sensitive: false });
     fill(); preview();
     [...root.querySelectorAll(".bldqlabel")].at(-1)?.select();
   });
   $("#fields").addEventListener("click", (e) => {
+    const add = e.target.closest("[data-add-field]");
+    if (add) {
+      const fields = draft.steps[+add.dataset.addField].fields;
+      if (fields.length >= 8) return toast("Each section supports up to 8 questions.");
+      fields.push({ id: `field_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`, label: "New question", type: "text", required: false, sensitive: false });
+      fill(); preview(); return;
+    }
     const rm = e.target.closest("[data-rm]")?.dataset.rm;
     if (!rm) return;
     const [si, fi] = rm.split(".").map(Number);
@@ -401,7 +459,19 @@ function openEditor(id) {
     draft.steps = draft.steps.filter((s) => s.fields.length);
     fill(); preview();
   });
+  $("#add-section").onclick = () => {
+    if (draft.steps.filter((s) => s.auto !== "extras").length >= 5) return toast("A form supports up to 5 sections.");
+    draft.steps.push({ title: "New section", description: "", fields: [{ id: `field_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`, label: "New question", type: "text", required: false, sensitive: false }] });
+    fill(); preview();
+  };
   $("#save").addEventListener("click", async () => {
+    if (source === "document" && !$("#import-reviewed")?.checked) { $("#sstat").textContent = "Review the import notes and confirm you checked the draft before publishing."; $("#import-reviewed")?.focus(); return; }
+    if (!draft.steps.some((s) => s.fields.length)) { $("#sstat").textContent = "Add at least one question before publishing."; return; }
+    for (const field of draft.steps.flatMap((s) => s.fields)) {
+      if (field.type === "select" && (!field.options?.length || field.options.length > 12 || field.options.some((o) => o.length > 60))) {
+        $("#sstat").textContent = `Check choices for "${field.label}": use 1 to 12 choices, each up to 60 characters.`; return;
+      }
+    }
     $("#save").disabled = true;
     try {
       if (id) { await api(`/api/kiosks/${id}`, { method: "PUT", body: { config: draft } }); toast("Saved"); }
@@ -413,16 +483,20 @@ function openEditor(id) {
 }
 function fill() {
   document.querySelectorAll("#editor [data-k]").forEach((el) => { if (el.type === "checkbox") el.checked = draft[el.dataset.k] !== false; else el.value = draft[el.dataset.k] ?? ""; });
-  $("#fields").innerHTML = draft.steps.map((s, si) => `<input class="bldstep" data-st="${si}" value="${esc(s.title)}" aria-label="Section title">
+  $("#fields").innerHTML = draft.steps.map((s, si) => `<input class="bldstep" data-st="${si}" maxlength="60" value="${esc(s.title)}" aria-label="Section title">
+    ${s.description ? `<label class="small">Section instructions<textarea data-sd="${si}" rows="2" maxlength="2000">${esc(s.description)}</textarea></label>` : ""}
     ${s.fields.map((f, fi) => `<div class="bldq"><div class="bldqrow"><input class="bldqlabel" data-f="${si}.${fi}.label" value="${esc(f.label)}" aria-label="Question">
       <select data-f="${si}.${fi}.type" aria-label="Answer type">${TYPES.map((t) => `<option value="${t}"${t === f.type ? " selected" : ""}>${TYPE_LABEL[t]}</option>`).join("")}</select>
       <button class="x" data-rm="${si}.${fi}" title="Remove question" aria-label="Remove ${esc(f.label)}">&times;</button></div>
       ${f.type === "select" ? `<input class="bldopts" data-fo="${si}.${fi}" value="${esc((f.options || []).join(", "))}" placeholder="Choices, separated by commas" aria-label="Choices">` : ""}
       <div class="bldflags"><label><input type="checkbox" data-f="${si}.${fi}.required" ${f.required ? "checked" : ""}> Required</label>
-      <label><input type="checkbox" data-f="${si}.${fi}.sensitive" ${f.sensitive ? "checked" : ""}> Private</label></div></div>`).join("")}`).join("");
+      <label><input type="checkbox" data-f="${si}.${fi}.sensitive" ${f.sensitive ? "checked" : ""}> Private</label></div>
+      ${f.description ? `<label class="small">Question instructions<textarea data-f="${si}.${fi}.description" rows="2" maxlength="2000">${esc(f.description)}</textarea></label>` : ""}</div>`).join("")}
+    <button type="button" class="btn-alt small" data-add-field="${si}">Add a question here</button>`).join("");
 }
 function onEdit(e) {
   const el = e.target;
+  if (el.closest("#preview") || el.id === "import-reviewed") return;
   if (el.dataset.fo) {
     const [si, fi] = el.dataset.fo.split(".").map(Number);
     draft.steps[si].fields[fi].options = el.value.split(",").map((o) => o.trim()).filter(Boolean);
@@ -430,10 +504,11 @@ function onEdit(e) {
   }
   if (el.dataset.k) draft[el.dataset.k] = el.type === "number" ? +el.value : el.type === "checkbox" ? el.checked : el.value;
   if (el.dataset.st) draft.steps[+el.dataset.st].title = el.value;
+  if (el.dataset.sd !== undefined) draft.steps[+el.dataset.sd].description = el.value;
   if (el.dataset.f) {
     const [si, fi, key] = el.dataset.f.split(".");
     const fld = draft.steps[si].fields[fi];
-    fld[key] = el.type === "checkbox" ? el.checked : el.value;
+    fld[key] = key === "options" ? el.value.split("\n").map((v) => v.trim()).filter(Boolean) : el.type === "checkbox" ? el.checked : el.value;
     if (key === "type" && fld.type === "select" && !fld.options?.length) fld.options = ["Option 1", "Option 2"];
   }
   if (el.dataset.lv) {
@@ -584,31 +659,9 @@ async function renderPageEditor() {
 }
 
 // ---------- Insights ----------
-async function renderInsights() {
+function renderInsights() {
   if (!loc) return noLocation("insights");
-  shell("insights", `<div class="row" style="justify-content:space-between;align-items:flex-end"><h1>Insights</h1><a href="/api/kiosks/${loc.id}/export" class="biz-link">Export CSV</a></div><p class="muted">${esc(loc.name)} · last 30 days. Only your own visitors; nothing is sold or shared.</p><div id="ins"><p class="muted">Loading...</p></div>`);
-  const d = await api(`/api/kiosks/${loc.id}/checkins`);
-  const start = new Date(); start.setHours(0, 0, 0, 0);
-  const today = d.checkins.filter((c) => c.created_at >= start.getTime());
-  const hours = Array.from({ length: 16 }, (_, i) => today.filter((c) => new Date(c.created_at).getHours() === i + 6).length);
-  const max = Math.max(1, ...hours);
-  const f = d.funnel;
-  const finish = f.starts ? Math.round((f.checkins / Math.max(f.starts, f.checkins)) * 100) : null;
-  const noShows = d.checkins.filter((c) => c.status === "no-show").length;
-  $("#ins").innerHTML = `${goalCard(d.goal)}<div class="kpis">${[[f.views, "page views"], [f.starts, "started a check-in"], [f.checkins, "checked in"], [finish === null ? "–" : `${finish}%`, "finish rate"]].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
-    <div class="grid2" style="gap:22px">
-      <div class="panel"><h2 style="font-size:24px">Ease Score</h2>
-        <div class="score" style="--b:var(--forest)"><b style="font-size:52px">${d.ease.avg ? d.ease.avg.toFixed(1) : "–"}</b><span>/ 5 · ${d.ease.count} ratings</span></div>
-        <p class="muted small">How easy visitors said checking in was. Comments are private to you.</p>
-        <ul class="audit">${d.feedback.map((x) => `<li><span class="stars">${x.score}/5</span> · ${esc(x.ticket)} · ${time(x.at)}${x.comment ? `<div>${esc(x.comment)}</div>` : ""}</li>`).join("")}</ul></div>
-      <div style="display:grid;gap:22px">
-        <div class="panel"><h2 style="font-size:24px">Check-ins by hour (today)</h2><div class="bars">${hours.map((h, i) => `<div title="${i + 6}:00 · ${h}" style="height:${(h / max) * 100}%;background:var(--forest)"></div>`).join("")}</div>
-          <div class="row small muted" style="justify-content:space-between"><span>6am</span><span>12pm</span><span>6pm</span></div>
-          <p class="small" style="margin:10px 0 0">${noShows ? `${noShows} no-show${noShows > 1 ? "s" : ""} in the last day.` : "No no-shows in the last day."}</p></div>
-        <div class="panel"><h2 style="font-size:24px">Audit log</h2><p class="muted small">Check-in data is deleted after ${d.config.retention_days} days.</p>
-          <ul class="audit">${d.audit.map((a) => `<li><strong>${esc(a.action)}</strong> · ${time(a.at)}<div class="muted">${esc(a.detail)}</div></li>`).join("")}</ul></div>
-      </div>
-    </div>`;
+  return renderInsightsView({ shell, location: loc, api, setPoll: (timer) => { poll = timer; } });
 }
 
 // ---------- People (owner only) ----------
