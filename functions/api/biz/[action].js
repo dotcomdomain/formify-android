@@ -1,6 +1,7 @@
 import { newId, hashPassword, verifyPassword, startSession, endSession, validCredentials, memberFor, can, json } from "../../../lib/auth.js";
 import { easeFor } from "../../../lib/ease.js";
 import { cleanProfile, slugify, validSlug } from "../../../lib/page.js";
+import { emit } from "../../../lib/webhook.js";
 
 // Business accounts: /api/biz/signup, login, logout, password (POST); me, staff (GET); staff (POST adds a login)
 const ROLES = ["manager", "staff"];
@@ -50,6 +51,21 @@ export async function onRequestPost({ params, request, env }) {
       env.DB.prepare("DELETE FROM sessions WHERE kind = 'biz' AND subject_id = ?").bind(m.id)
     ]);
     return json({ ok: true }, 200, await startSession(env, "biz", m.id));
+  }
+
+  if (params.action === "integrations") {
+    if (!can(m, "staff")) return json({ error: "Only the owner can change integrations." }, 403);
+    if (body.test) {
+      const k = await env.DB.prepare("SELECT id FROM kiosks WHERE owner_id = ? LIMIT 1").bind(m.business_id).first();
+      if (!k) return json({ error: "Create a form first." }, 400);
+      await emit(env, k.id, "test", { message: "Hello from Formify. Your webhook works." });
+      return json({ ok: true });
+    }
+    const raw = String(body.webhook_url || "").trim();
+    if (raw && !/^https:\/\/[^\s]+$/i.test(raw)) return json({ error: "Webhook URL must start with https://" }, 400);
+    const secret = raw ? [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("") : null;
+    await env.DB.prepare("UPDATE businesses SET webhook_url = ?, webhook_secret = COALESCE(?, webhook_secret) WHERE id = ?").bind(raw || null, secret, m.business_id).run();
+    return json({ ok: true, webhook_url: raw || null, secret: secret || undefined });
   }
 
   if (params.action === "page") {
@@ -102,6 +118,11 @@ export async function onRequestGet({ params, request, env }) {
     if (!can(m, "staff")) return json({ error: "Only the owner can manage people." }, 403);
     const { results } = await env.DB.prepare("SELECT id, email, name, role, created_at FROM members WHERE business_id = ? ORDER BY role = 'owner' DESC, created_at").bind(m.business_id).all();
     return json({ members: results });
+  }
+  if (params.action === "integrations") {
+    if (!can(m, "staff")) return json({ error: "Only the owner can see integrations." }, 403);
+    const b = await env.DB.prepare("SELECT webhook_url FROM businesses WHERE id = ?").bind(m.business_id).first();
+    return json({ webhook_url: b.webhook_url || null });
   }
   if (params.action === "page") {
     const biz = await env.DB.prepare("SELECT name, slug, profile FROM businesses WHERE id = ?").bind(m.business_id).first();

@@ -29,7 +29,7 @@ export async function onRequestGet({ params, request, env }) {
 
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const { results } = await env.DB.prepare(
-    "SELECT id, ticket, answers, status, created_at, arrived_at, served_at, channel, language, summary, flags, amount_cents, paid_at, pay_method FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY COALESCE(arrived_at, created_at)"
+    "SELECT id, ticket, answers, status, created_at, arrived_at, served_at, channel, language, summary, flags, amount_cents, paid_at, pay_method, delete_status, (SELECT COUNT(*) FROM messages m WHERE m.checkin_id = checkins.id AND m.sender = 'customer' AND m.id > COALESCE(checkins.seen_business, 0)) AS unread FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY COALESCE(arrived_at, created_at)"
   ).bind(params.id, start.getTime() - DAY).all();
   const audit = (await env.DB.prepare("SELECT action, detail, at FROM audit WHERE kiosk_id = ? ORDER BY at DESC LIMIT 30").bind(params.id).all()).results;
 
@@ -45,11 +45,17 @@ export async function onRequestGet({ params, request, env }) {
     if (t) await env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)").bind(params.id, "viewed sensitive data", `Ticket ${t.ticket} · by ${member.name} (${member.role})`, Date.now()).run();
   }
   const ease = await easeFor(env, params.id);
+  // Conversations and data requests that need an answer, even on finished visits.
+  const inbox = (await env.DB.prepare(`SELECT c.id, c.ticket, c.status, c.delete_status, c.delete_note,
+      (SELECT COUNT(*) FROM messages m WHERE m.checkin_id = c.id AND m.sender = 'customer' AND m.id > COALESCE(c.seen_business, 0)) AS unread,
+      (SELECT body FROM messages m WHERE m.checkin_id = c.id AND m.sender = 'customer' ORDER BY m.id DESC LIMIT 1) AS last
+    FROM checkins c WHERE c.kiosk_id = ? AND (c.delete_status = 'requested' OR EXISTS (SELECT 1 FROM messages m WHERE m.checkin_id = c.id AND m.sender = 'customer' AND m.id > COALESCE(c.seen_business, 0)))
+    ORDER BY c.id DESC LIMIT 20`).bind(params.id).all()).results;
   const feedback = (await env.DB.prepare("SELECT r.score, r.comment, r.at, c.ticket FROM ratings r JOIN checkins c ON c.id = r.checkin_id WHERE r.kiosk_id = ? ORDER BY r.at DESC LIMIT 8")
     .bind(params.id).all()).results;
   const alerts = (await env.DB.prepare("SELECT id, kind, message, ticket, at FROM alerts WHERE kiosk_id = ? AND ack_at IS NULL AND at > ? ORDER BY at DESC")
     .bind(params.id, Date.now() - 3 * 3600000).all()).results;
   const month = Date.now() - 30 * DAY;
   const counts = Object.fromEntries((await env.DB.prepare("SELECT type, COUNT(*) AS n FROM events WHERE kiosk_id = ? AND at > ? GROUP BY type").bind(params.id, month).all()).results.map((r) => [r.type, r.n]));
-  return Response.json({ config, checkins, audit, ease, feedback, alerts, funnel: { views: counts.view || 0, starts: counts.start || 0, checkins: counts.checkin || 0 } });
+  return Response.json({ config, checkins, audit, ease, feedback, alerts, inbox, funnel: { views: counts.view || 0, starts: counts.start || 0, checkins: counts.checkin || 0 } });
 }

@@ -20,6 +20,22 @@
   .state { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
   .box { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
   .visit button { width: 100%; font-size: 19px; padding: 16px; background: var(--brand); }
+  .thread { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 12px; }
+  .tm { max-width: 86%; padding: 10px 13px; border-radius: 14px; font-size: 15.5px; line-height: 1.4; }
+  .tm.system { align-self: center; max-width: 100%; background: transparent; color: var(--muted); font-size: 13.5px; text-align: center; padding: 2px 6px; }
+  .tm.receipt { align-self: stretch; max-width: 100%; background: var(--cream, #f5efe4); border: 1px dashed var(--line); text-align: center; font-weight: 650; color: var(--ink); }
+  .tm.business { align-self: flex-start; background: #eef1f5; border-bottom-left-radius: 4px; }
+  .tm.customer { align-self: flex-end; background: var(--brand); color: #fff; border-bottom-right-radius: 4px; }
+  .tm .who { display: block; font-size: 12px; opacity: .7; margin-bottom: 2px; }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .visit .quick button { width: auto; font-size: 13.5px; padding: 7px 12px; background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; }
+  .visit .send { display: flex; gap: 8px; }
+  .visit .send input { flex: 1; }
+  .visit .send button { width: auto; padding: 0 18px; font-size: 16px; }
+  .visit details.box summary { cursor: pointer; font-weight: 700; color: var(--ink); font-size: 16px; }
+  .visit dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 12px 0; font-size: 14.5px; }
+  .visit dt { color: var(--muted); } .visit dd { margin: 0; font-weight: 600; word-break: break-word; }
+  .visit .ghostbtn { background: #fff; color: var(--ink); border: 1px solid var(--line); font-size: 15px; padding: 12px; }
 </style>
 </head>
 <body style="background:#fff">
@@ -27,6 +43,14 @@
   <div class="k-head" id="name">Your check-in</div>
   <div class="in" id="v"><p class="muted">Loading...</p></div>
   <div class="in" id="rate" style="padding-top:0"></div>
+  <div class="in" style="padding-top:0">
+    <div class="box" style="margin-top:0"><div class="state" style="font-size:17px">Messages</div>
+      <div class="thread" id="thread" aria-live="polite"></div>
+      <div class="quick" id="quick"></div>
+      <form class="send" id="sendf"><input id="msg" placeholder="Message the business" autocomplete="off" aria-label="Message the business"><button>Send</button></form>
+    </div>
+    <details class="box" id="mydata"><summary>Your data for this visit</summary><div id="mydataBody"><p class="muted small">Loading...</p></div></details>
+  </div>
   <div class="in" style="padding-top:0"><a href="/#you" class="small">My info and past check-ins</a> · <a href="/#search" class="small">Find another business</a></div>
 </div>
 <script type="module">
@@ -44,9 +68,10 @@ async function load() {
   const states = {
     pending: ["You're checked in", "Show the code at the kiosk when you arrive, or tap the button once you're inside."],
     waiting: [d.ahead ? `${d.ahead} ahead of you` : "You're next", d.wait_minutes ? `About ${d.wait_minutes} minutes. We'll call your number.` : "We'll call your number shortly."],
-    serving: ["It's your turn", "Please go to the front desk now."],
+    serving: d.flow === "dropoff" ? ["In progress", "We're working on it. We'll message you when it's ready."] : ["It's your turn", "Please go to the front desk now."],
+    ready: ["Ready for pickup", "Come pick it up whenever you're ready."],
     payment: [`Your total is $${((d.amount_cents || 0) / 100).toFixed(2)}`, "Pay here on your phone, or at the counter."],
-    done: [d.paid_at ? `Paid $${((d.amount_cents || 0) / 100).toFixed(2)}` : "All done", d.paid_at ? ({ card: "Paid by card. Thanks for coming in!", phone: "Paid from your phone. Thanks for coming in!" }[d.pay_method] || "Paid at the counter. Thanks for coming in!") : "Thanks for checking in."],
+    done: d.flow === "forms_only" && !d.paid_at ? ["Received", "Your form is in. Nothing else to do."] : [d.paid_at ? `Paid $${((d.amount_cents || 0) / 100).toFixed(2)}` : "All done", d.paid_at ? ({ card: "Paid by card. Thanks for coming in!", phone: "Paid from your phone. Thanks for coming in!" }[d.pay_method] || "Paid at the counter. Thanks for coming in!") : "Thanks for checking in."],
     "no-show": ["Check-in closed", "Please see the front desk."]
   };
   const [title, sub] = states[d.status] || states.done;
@@ -111,6 +136,62 @@ function showRating(d) {
     };
   } else box.innerHTML = "";
 }
+// ---------- Visit thread ----------
+let lastCount = -1;
+const QUICK = ["Running about 10 minutes late", "Can I reschedule?", "I have a question about my visit"];
+async function loadThread() {
+  const r = await fetch(`/api/visit/${encodeURIComponent(token)}/messages`);
+  if (!r.ok) return;
+  const { messages } = await r.json();
+  if (messages.length === lastCount) return;
+  lastCount = messages.length;
+  const box = document.getElementById("thread");
+  box.innerHTML = messages.map((m) => {
+    const t = new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (m.sender === "system") return `<div class="tm ${m.kind === "receipt" ? "receipt" : "system"}">${m.kind === "receipt" ? "Receipt · " : ""}${esc(m.body)} · ${t}</div>`;
+    return `<div class="tm ${m.sender}">${m.sender === "business" ? `<span class="who">${esc(m.author || "Staff")} · ${t}</span>` : ""}${esc(m.body)}</div>`;
+  }).join("");
+  box.lastElementChild?.scrollIntoView({ block: "nearest" });
+}
+document.getElementById("quick").innerHTML = QUICK.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("");
+document.getElementById("quick").addEventListener("click", (e) => { const q = e.target.dataset.q; if (q) sendMsg(q); });
+document.getElementById("sendf").addEventListener("submit", (e) => { e.preventDefault(); const i = document.getElementById("msg"); if (i.value.trim()) { sendMsg(i.value); i.value = ""; } });
+async function sendMsg(body) {
+  const r = await fetch(`/api/visit/${encodeURIComponent(token)}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); alertBox(d.error || "Couldn't send."); }
+  lastCount = -1; loadThread();
+}
+function alertBox(msg) { const t = document.createElement("p"); t.className = "k-err small"; t.textContent = msg; document.getElementById("sendf").after(t); setTimeout(() => t.remove(), 4000); }
+
+// ---------- Your data for this visit ----------
+async function loadData() {
+  const r = await fetch(`/api/visit/${encodeURIComponent(token)}/data`);
+  const body = document.getElementById("mydataBody");
+  if (!r.ok) { body.innerHTML = '<p class="muted small">Not available.</p>'; return; }
+  const d = await r.json();
+  const fmt = (t) => new Date(t).toLocaleDateString([], { dateStyle: "medium" });
+  const req = d.request;
+  body.innerHTML = `<p class="muted small" style="margin:10px 0 0">${esc(d.business)} has this from your ${esc(d.form || "check-in")} on ${fmt(d.collected_at)}. It's deleted automatically on <strong>${fmt(d.delete_by)}</strong>.</p>
+    ${d.fields.length ? `<dl>${d.fields.map((f) => `<dt>${esc(f.label)}</dt><dd>${f.value === true ? "Yes" : f.value === false ? "No" : esc(f.value)}</dd>`).join("")}</dl>` : '<p class="small" style="margin:12px 0"><strong>Nothing stored.</strong> Your info for this visit has been deleted.</p>'}
+    <p class="muted small" style="margin:0 0 12px">Why they asked: ${esc(d.purpose)}</p>
+    <div style="display:grid;gap:8px">
+      <button type="button" class="ghostbtn" id="dl">Download my data</button>
+      ${!req && d.fields.length ? '<button type="button" class="ghostbtn" id="del">Ask them to delete it</button>' : ""}
+    </div>
+    ${req ? `<p class="small" style="margin:12px 0 0"><strong>Deletion request:</strong> ${req.status === "requested" ? "sent, waiting for the business (they have 30 days)" : req.status === "deleted" ? "done, your info was deleted" : `the business needs to keep it: ${esc(req.note || "")}`}</p>` : ""}`;
+  document.getElementById("dl").onclick = () => {
+    const blob = new Blob([JSON.stringify({ business: d.business, form: d.form, ticket: d.ticket, collected_at: new Date(d.collected_at).toISOString(), delete_by: new Date(d.delete_by).toISOString(), purpose: d.purpose, data: Object.fromEntries(d.fields.map((f) => [f.label, f.value])) }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `formify-${d.ticket}.json`; a.click();
+  };
+  document.getElementById("del")?.addEventListener("click", async (e) => {
+    // Two taps so it can't be sent by accident.
+    if (e.target.dataset.armed !== "1") { e.target.dataset.armed = "1"; e.target.textContent = "Tap again to send the request"; return; }
+    await fetch(`/api/visit/${encodeURIComponent(token)}/data`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    loadData(); lastCount = -1; loadThread();
+  });
+}
+document.getElementById("mydata").addEventListener("toggle", (e) => { if (e.target.open) loadData(); });
+
 // Back from Stripe: confirm with the server (which asks Stripe) before showing "Paid".
 const sessionId = new URLSearchParams(location.search).get("session_id");
 if (sessionId) {
@@ -119,7 +200,8 @@ if (sessionId) {
   history.replaceState(null, "", `/visit.html#${token}`);
 }
 load();
-timer = setInterval(load, 5000);
+loadThread();
+timer = setInterval(() => { load(); loadThread(); }, 5000);
 </script>
 </body>
 </html>

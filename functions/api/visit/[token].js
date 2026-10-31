@@ -1,5 +1,6 @@
 import { loadConfig, position } from "../../../lib/queue.js";
 import { stripeMode } from "../../../lib/stripe.js";
+import { addMessage } from "../../../lib/thread.js";
 
 async function load(env, token) {
   if (!/^[0-9a-f]{32}$/.test(token)) return null;
@@ -13,7 +14,7 @@ export async function onRequestGet({ params, env }) {
   const config = await loadConfig(env, row.kiosk_id);
   const rated = await env.DB.prepare("SELECT score FROM ratings WHERE checkin_id = ?").bind(row.id).first();
   return Response.json({
-    kiosk_id: row.kiosk_id, name: config.name, brand_color: config.brand_color, ticket: row.ticket, status: row.status, code: row.code,
+    kiosk_id: row.kiosk_id, name: config.name, flow: config.flow || "walk_in", form: config.form_label || "", brand_color: config.brand_color, ticket: row.ticket, status: row.status, code: row.code,
     rated: rated?.score || null,
     payments: stripeMode(env), amount_cents: row.amount_cents || null, paid_at: row.paid_at || null, pay_method: row.pay_method || null,
     links: { google_reviews: config.google_reviews || "", instagram: config.instagram || "", website: config.website || "" },
@@ -22,9 +23,12 @@ export async function onRequestGet({ params, env }) {
 }
 
 // "I'm here" button on the phone.
-export async function onRequestPost({ params, env }) {
+export async function onRequestPost({ params, env, waitUntil }) {
   const row = await load(env, params.token);
   if (!row) return Response.json({ error: "Visit not found" }, { status: 404 });
-  if (row.status === "pending") await env.DB.prepare("UPDATE checkins SET status = 'waiting', arrived_at = ? WHERE id = ?").bind(Date.now(), row.id).run();
+  if (row.status === "pending") {
+    await env.DB.prepare("UPDATE checkins SET status = 'waiting', arrived_at = ? WHERE id = ?").bind(Date.now(), row.id).run();
+    await addMessage(env, waitUntil, { checkinId: row.id, kioskId: row.kiosk_id, sender: "system", kind: "status", body: "You're here. You're in line; we'll message you when it's your turn." });
+  }
   return Response.json({ ok: true });
 }

@@ -241,3 +241,18 @@ body.app::before {
 .pageedit .formrow { cursor: default; }
 .pageedit .handle { display: flex; flex-direction: column; gap: 4px; }
 .pageedit .handle button { padding: 4px 9px; font-size: 13px; background: var(--cream); color: var(--ink); border: 1px solid var(--line); }
+.tabs button { position: relative; }
+.tabdot { position: absolute; top: 2px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--clay); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; }
+/* Business thread */
+.bthread { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.bthread .tm { max-width: 90%; padding: 8px 11px; border-radius: 12px; font-size: 14px; margin: 4px 0; }
+.bthread .tm.customer { background: var(--sand); margin-right: auto; }
+.bthread .tm.business { background: var(--forest); color: #fff; margin-left: auto; }
+.bthread .tm.system { color: var(--muted); font-size: 12.5px; padding: 2px 0; }
+.bthread .tm.receipt { background: var(--cream); border: 1px dashed var(--line); font-weight: 650; }
+.bthread .tml { display: flex; flex-direction: column; }
+.bthread .send { display: flex; gap: 6px; margin-top: 8px; }
+.bthread .send input { flex: 1; padding: 8px 10px; }
+.bthread .quick { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.bthread .quick button { font-size: 12.5px; padding: 5px 10px; background: var(--cream); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; }
+.unread { display: inline-block; background: var(--clay); color: #fff; font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 1px 8px; margin-left: 6px; }

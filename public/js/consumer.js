@@ -41,7 +41,7 @@ async function saveProfile(p) {
   if (account.signedIn) { await api("/api/me/profile", { method: "PUT", body: { profile: p } }); account.profile = p; }
 }
 function rememberVisit(v) {
-  if (account.signedIn) return; // the account already records it
+  if (account.signedIn) { (account.visits ||= []).unshift({ ...v, at: Date.now() }); return; } // the account records it server-side too
   const visits = local.get("ks_visits", []);
   visits.unshift({ ...v, at: Date.now() });
   local.set("ks_visits", visits.slice(0, 20));
@@ -58,7 +58,9 @@ function route() {
   const [tab, id, extra] = (location.hash.slice(1) || "search").split("/");
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === (["b", "biz", "checkin"].includes(tab) ? "search" : tab)));
   window.scrollTo({ top: 0 });
+  clearInterval(inboxTimer);
   if (tab === "assistant") return renderAssistant();
+  if (tab === "visits") return renderVisits();
   if (tab === "you") return renderYou();
   if (tab === "biz" && id) return renderPage(id);
   if (tab === "b" && id) return renderBusiness(id);
@@ -392,6 +394,46 @@ async function speak(text) {
   } catch {}
 }
 
+// ---------- Visits: one inbox for every business ----------
+let inboxTimer;
+const STATUS_LABEL = { pending: "Checked in · not arrived", waiting: "In line", serving: "Your turn", ready: "Ready for pickup", payment: "Payment due", done: "Done", "no-show": "Closed" };
+const visitTokens = () => (account.signedIn ? (account.visits || []).map((v) => v.token) : local.get("ks_visits", []).map((v) => v.token)).filter(Boolean);
+async function fetchVisits() {
+  const tokens = visitTokens();
+  if (!tokens.length) return [];
+  try { return (await api("/api/visits", { method: "POST", body: { tokens } })).visits; } catch { return []; }
+}
+async function refreshUnread() {
+  const visits = await fetchVisits();
+  const n = visits.reduce((s, v) => s + (v.unread || 0), 0);
+  const dot = $("#unreadDot");
+  if (dot) { dot.hidden = !n; dot.textContent = n > 9 ? "9+" : String(n); }
+  return visits;
+}
+async function renderVisits() {
+  view.innerHTML = `<section class="view">
+    <div class="hero" style="margin-bottom:18px"><h1 style="font-size:clamp(36px,5vw,58px)">Every business, <em>one inbox.</em></h1>
+      <p>Your place in line, messages, receipts and follow-ups from every business you've checked in with.</p></div>
+    <div id="inbox" class="formlist"><p class="muted">Loading...</p></div>
+  </section>`;
+  const draw = async () => {
+    const visits = await refreshUnread();
+    const box = $("#inbox");
+    if (!box) return clearInterval(inboxTimer);
+    box.innerHTML = visits.length ? visits.map((v, i) => {
+      const when = new Date(v.last?.at || v.at);
+      const live = ["pending", "waiting", "serving", "ready", "payment"].includes(v.status);
+      return `<a class="formrow" href="/visit.html#${esc(v.token)}" style="--b:${esc(v.brand_color)};text-decoration:none;color:inherit;animation-delay:${i * 40}ms">
+        <div style="min-width:0;flex:1"><div class="row" style="gap:8px"><b>${esc(v.name)}</b>${v.unread ? `<span class="badge" style="background:var(--clay);color:#fff">${v.unread} new</span>` : ""}</div>
+          <div class="muted small">${esc(v.form || "Check-in")} · ticket ${esc(v.ticket)} · ${when.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</div>
+          ${v.last ? `<div class="small" style="margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.last.sender === "customer" ? "You: " : ""}${esc(v.last.body)}</div>` : ""}</div>
+        <span class="waitpill" style="flex:none;${live ? "" : "background:var(--sand);color:var(--muted)"}">${esc(STATUS_LABEL[v.status] || v.status)}${v.paid ? " · paid" : ""}</span></a>`;
+    }).join("") : `<div class="empty panel"><b>No visits yet</b>Check in somewhere and it shows up here: your place in line, messages and receipts. <div style="margin-top:14px"><a href="#search">Find a place</a> or ask the <a href="#assistant">assistant</a></div></div>`;
+  };
+  await draw();
+  inboxTimer = setInterval(draw, 6000);
+}
+
 // ---------- You ----------
 let authMode = "signup";
 function renderYou() {
@@ -417,6 +459,9 @@ function renderYou() {
           <form id="aform"><label for="a_email">Email</label><input id="a_email" type="email" autocomplete="email" required>
             <label for="a_pass">Password</label><input id="a_pass" type="password" autocomplete="${authMode === "signup" ? "new-password" : "current-password"}" minlength="8" required>
             <button style="margin-top:14px;width:100%">${authMode === "signup" ? "Create account and sync" : "Sign in"}</button><p class="k-err small" id="aerr"></p></form>`}</div>
+        <div class="panel"><h2>Your data, your call</h2>
+          <p class="muted" style="margin:0 0 10px">Each business only gets the fields its form asks for, and only when you check in. Open any visit in <a href="#visits">Visits</a> to see exactly what that business has, when it's deleted, download it, or ask them to delete it.</p>
+          <p class="small" style="margin:0"><strong>${visits.length}</strong> business visit${visits.length === 1 ? "" : "s"} hold your info right now. Formify never sells it.</p></div>
         <div class="panel"><h2>Appearance</h2><div class="seg" style="margin:0"><button type="button" data-th="warm" class="${theme() === "warm" ? "on" : ""}">Warm</button><button type="button" data-th="blue" class="${theme() === "blue" ? "on" : ""}">Blue</button></div></div>
         <div class="panel"><h2>Recent check-ins</h2>
           ${visits.length ? visits.map((v) => `<div class="visit-row"><div><b>${esc(v.name)}</b><div class="muted small">Ticket ${esc(v.ticket)} · ${new Date(v.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</div></div><a href="/visit.html#${esc(v.token)}" class="small">Status</a></div>`).join("")
@@ -456,3 +501,5 @@ function renderYou() {
 
 await loadAccount();
 route();
+refreshUnread();
+setInterval(refreshUnread, 20000);

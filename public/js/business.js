@@ -107,11 +107,12 @@ async function renderLive() {
       <div><h1>${esc(loc.name)}</h1><p class="muted" style="margin:0">Live front desk · updates every few seconds</p></div>
       <a href="/kiosk.html?id=${loc.id}" target="_blank" class="biz-link">Open the kiosk</a></div>
     <div id="alerts" style="margin-top:18px"></div>
+    <div id="binbox"></div>
     <div class="kpis" id="kpis"></div>
     <div id="queue"></div>`);
   first = true; seen = new Set();
   await loadLive();
-  poll = setInterval(() => { if (!reveal && !document.activeElement?.dataset?.amt) loadLive(); }, 4000);
+  poll = setInterval(() => { const a = document.activeElement?.dataset || {}; if (!reveal && !a.amt && !a.tin && !a.keepr) loadLive(); }, 4000);
 }
 async function loadLive() {
   let d;
@@ -132,7 +133,15 @@ async function loadLive() {
     [served.length ? avg.toFixed(1) : "–", "avg. wait, minutes"], [money(paid), "paid through Formify today"]].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
 
   const labels = Object.fromEntries(d.config.steps.flatMap((s) => s.fields.map((f) => [f.id, f.label])));
-  const order = { serving: 0, payment: 1, waiting: 2, pending: 3 };
+  $("#binbox").innerHTML = d.inbox.length ? `<div class="panel" style="margin-bottom:16px"><h3 style="margin:0 0 6px">Needs a reply</h3>${d.inbox.map((x) => `
+    <div class="visit-row"><div style="min-width:0"><b>${esc(x.ticket)}</b> <span class="muted small">${esc(x.status)}</span>
+      ${x.delete_status === "requested" ? `<div class="small"><span class="flag urgent">Data deletion request</span> The customer asked you to delete their info.${x.delete_note ? ` "${esc(x.delete_note)}"` : ""}</div>
+        <div class="row small" style="gap:6px;margin-top:6px"><button data-ddel="${x.id}">Delete their info</button><input data-keepr="${x.id}" placeholder="Or: reason you must keep it" style="flex:1;min-width:160px;padding:7px 9px"><button class="btn-alt" data-dkeep="${x.id}">Keep</button></div>` : ""}
+      ${x.unread ? `<div class="small" style="margin-top:4px">${x.unread} new message${x.unread > 1 ? "s" : ""}: "${esc(x.last || "")}"</div><button class="ghost small" data-thread="${x.id}" style="margin-top:6px">Open conversation</button><div class="bthread" data-thr="${x.id}" ${openThreads.has(String(x.id)) ? "" : "hidden"}></div>` : ""}
+    </div></div>`).join("")}</div>` : "";
+
+  const flow = d.config.flow || "walk_in";
+  const order = { serving: 0, ready: 1, payment: 2, waiting: 3, pending: 4 };
   const active = d.checkins.filter((c) => c.status in order || String(c.id) === reveal).sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4) || (a.arrived_at || a.created_at) - (b.arrived_at || b.created_at));
   const open = new Set([...document.querySelectorAll("details[open]")].map((x) => x.dataset.d));
   $("#queue").innerHTML = active.length ? active.map((c) => {
@@ -140,16 +149,45 @@ async function loadLive() {
     const details = Object.entries(c.answers).map(([k, v]) => `<div><span class="muted">${esc(labels[k] || k)}:</span> ${v === true ? "Yes" : esc(v)}</div>`).join("");
     const masked = Object.values(c.answers).includes("•••");
     const acts = c.status === "waiting" ? `<button data-s="serving" data-id="${c.id}">Call ${esc(c.ticket)}</button>`
-      : c.status === "serving" ? `<button data-s="done" data-id="${c.id}">Done</button><input data-amt="${c.id}" inputmode="decimal" placeholder="$ total" value="${esc(amounts[c.id] || "")}"><button class="btn-alt" data-pay="${c.id}">Send to cashier</button>`
+      : c.status === "serving" && flow === "dropoff" ? `<button data-s="ready" data-id="${c.id}">Ready for pickup</button>`
+      : c.status === "serving" || c.status === "ready" ? `${c.status === "ready" ? '<span class="pill ok">ready for pickup</span>' : ""}<button data-s="done" data-id="${c.id}">Done</button><input data-amt="${c.id}" inputmode="decimal" placeholder="$ total" value="${esc(amounts[c.id] || "")}"><button class="btn-alt" data-pay="${c.id}">Send to cashier</button>`
       : c.status === "payment" ? `<span class="pill payment">awaiting ${money(c.amount_cents)}</span><button data-s="done" data-paid="counter" data-id="${c.id}">Paid at counter</button>`
       : `<span class="pill">on the way</span>`;
     return `<div class="qcard ${c.status === "pending" ? "pending" : ""}">
-      <div><div class="tk">${esc(c.ticket)}</div><div class="muted small">${time(c.arrived_at || c.created_at)} · ${esc(c.channel || "kiosk")}</div></div>
+      <div><div class="tk">${esc(c.ticket)}${c.unread ? `<span class="unread">${c.unread}</span>` : ""}</div><div class="muted small">${time(c.arrived_at || c.created_at)} · ${esc(c.channel || "kiosk")}</div></div>
       <div>${c.summary ? `<div class="summary" style="font-size:17px">${esc(c.summary)}</div>${flags}` : Date.now() - c.created_at < 60000 ? '<div class="muted small">Writing handoff note...</div>' : ""}
-        <details data-d="${c.id}"${open.has(String(c.id)) || String(c.id) === reveal ? " open" : ""}><summary>Answers</summary>${details}${masked ? `<button class="ghost" data-reveal="${c.id}" style="margin-top:6px">Reveal sensitive (logged)</button>` : ""}</details></div>
+        <details data-d="${c.id}"${open.has(String(c.id)) || String(c.id) === reveal ? " open" : ""}><summary>Answers</summary>${details}${masked ? `<button class="ghost" data-reveal="${c.id}" style="margin-top:6px">Reveal sensitive (logged)</button>` : ""}</details>
+        <button class="ghost small" data-thread="${c.id}" style="margin-top:6px">${openThreads.has(String(c.id)) ? "Hide" : "Messages"}${c.unread ? ` (${c.unread} new)` : ""}</button>
+        <div class="bthread" data-thr="${c.id}" ${openThreads.has(String(c.id)) ? "" : "hidden"}></div></div>
       <div class="acts">${acts}${c.status !== "payment" ? `<button class="ghost" data-s="no-show" data-id="${c.id}">No-show</button>` : ""}</div>
     </div>`;
   }).join("") : `<div class="empty panel"><b>All clear</b>New check-ins from the kiosk, phones and AI assistants show up here.</div>`;
+  for (const id of openThreads) drawThread(id);
+}
+
+// ---------- Visit threads (business side) ----------
+const openThreads = new Set();
+const drafts = {};
+const QUICK_REPLIES = ["Come on in, you're next", "Running about 10 minutes behind, sorry!", "It's ready for pickup", "Can you come to the front desk?"];
+async function drawThread(id) {
+  const boxes = root.querySelectorAll(`[data-thr="${id}"]`);
+  if (!boxes.length) return;
+  let msgs;
+  try { msgs = (await api(`/api/checkins/${id}/messages`)).messages; } catch { return; }
+  const html = `<div class="tml">${msgs.map((m) => {
+    const t = time(m.at);
+    if (m.sender === "system") return `<div class="tm ${m.kind === "receipt" ? "receipt" : "system"}">${esc(m.body)} · ${t}</div>`;
+    return `<div class="tm ${m.sender}">${m.sender === "business" ? `<span class="small" style="opacity:.75">${esc(m.author || "Staff")}: </span>` : ""}${esc(m.body)} <span class="small" style="opacity:.6">${t}</span></div>`;
+  }).join("") || '<div class="tm system">No messages yet.</div>'}</div>
+    <div class="quick">${QUICK_REPLIES.map((q) => `<button data-qr="${id}" data-text="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+    <div class="send"><input data-tin="${id}" placeholder="Reply to the customer" value="${esc(drafts[id] || "")}"><button data-tsend="${id}">Send</button></div>`;
+  boxes.forEach((b) => { b.innerHTML = html; });
+}
+async function sendReply(id, body) {
+  if (!String(body || "").trim()) return;
+  await api(`/api/checkins/${id}/messages`, { method: "POST", body: { body } });
+  delete drafts[id];
+  await drawThread(id);
 }
 
 root.addEventListener("click", async (e) => {
@@ -158,6 +196,23 @@ root.addEventListener("click", async (e) => {
   try {
     if (b.dataset.reveal) { reveal = b.dataset.reveal; await loadLive(); reveal = ""; return; }
     if (b.dataset.ack) { await api(`/api/alerts/${b.dataset.ack}`, { method: "POST" }); return loadLive(); }
+    if (b.dataset.thread) {
+      const id = b.dataset.thread;
+      if (openThreads.has(id)) openThreads.delete(id); else openThreads.add(id);
+      root.querySelectorAll(`[data-thr="${id}"]`).forEach((x) => { x.hidden = !openThreads.has(id); });
+      if (openThreads.has(id)) await drawThread(id);
+      return;
+    }
+    if (b.dataset.qr) return sendReply(b.dataset.qr, b.dataset.text);
+    if (b.dataset.tsend) return sendReply(b.dataset.tsend, root.querySelector(`[data-tin="${b.dataset.tsend}"]`)?.value);
+    if (b.dataset.ddel) {
+      if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap to confirm delete"; return; }
+      await api(`/api/checkins/${b.dataset.ddel}/data`, { method: "POST", body: { action: "delete" } }); toast("Their info was deleted and they were told."); return loadLive();
+    }
+    if (b.dataset.dkeep) {
+      const note = root.querySelector(`[data-keepr="${b.dataset.dkeep}"]`)?.value;
+      await api(`/api/checkins/${b.dataset.dkeep}/data`, { method: "POST", body: { action: "keep", note } }); toast("Reply sent to the customer."); return loadLive();
+    }
     if (b.dataset.pay) {
       const amount = parseFloat(String(amounts[b.dataset.pay] || "").replace(/[^0-9.]/g, ""));
       if (!(amount > 0)) return $(`[data-amt="${b.dataset.pay}"]`)?.focus();
@@ -167,7 +222,8 @@ root.addEventListener("click", async (e) => {
     if (b.dataset.s) { await api(`/api/checkins/${b.dataset.id}`, { method: "PATCH", body: { status: b.dataset.s, paid: b.dataset.paid } }); return loadLive(); }
   } catch (err) { toast(err.message); }
 });
-root.addEventListener("input", (e) => { if (e.target.dataset.amt) amounts[e.target.dataset.amt] = e.target.value; });
+root.addEventListener("input", (e) => { if (e.target.dataset.amt) amounts[e.target.dataset.amt] = e.target.value; if (e.target.dataset.tin) drafts[e.target.dataset.tin] = e.target.value; });
+root.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.dataset.tin) { e.preventDefault(); sendReply(e.target.dataset.tin, e.target.value); } });
 
 // ---------- Forms ----------
 function renderForms() {
@@ -222,6 +278,14 @@ function openEditor(id) {
       <label>Welcome title</label><input data-k="welcome_title">
       <label>Consent text visitors agree to</label><textarea data-k="consent_text" rows="2"></textarea>
       <div class="grid2" style="gap:12px">${f("retention_days", "Delete data after (days)", 'type="number" min="1" max="365"')}${f("avg_service_minutes", "Minutes per visitor", 'type="number" min="1" max="120"')}</div>
+      <label for="flowsel">How do customers come in?</label>
+      <select data-k="flow" id="flowsel">
+        <option value="walk_in">Walk in and wait in line</option>
+        <option value="appointment">Book ahead, then check in on arrival</option>
+        <option value="dropoff">Drop off, pick up when it's ready</option>
+        <option value="forms_only">Forms only (waivers, sign-ups), no line</option>
+      </select>
+      <p class="muted small" style="margin:4px 0 0">Formify adapts the customer's updates and your front desk to this. Keep using your booking or POS system; connect it in Settings.</p>
       <div id="fields"></div>
       <div class="step-title">Public page</div>
       <div class="grid2" style="gap:12px">${f("city", "City", 'placeholder="Hamilton, ON"')}${f("instagram", "Instagram", 'placeholder="@yourbusiness"')}${f("google_reviews", "Google reviews link")}${f("website", "Website")}</div>
@@ -364,7 +428,7 @@ async function renderPageEditor() {
 // ---------- Insights ----------
 async function renderInsights() {
   if (!loc) return noLocation("insights");
-  shell("insights", `<h1>Insights</h1><p class="muted">${esc(loc.name)} · last 30 days. Only your own visitors; nothing is sold or shared.</p><div id="ins"><p class="muted">Loading...</p></div>`);
+  shell("insights", `<div class="row" style="justify-content:space-between;align-items:flex-end"><h1>Insights</h1><a href="/api/kiosks/${loc.id}/export" class="biz-link">Export CSV</a></div><p class="muted">${esc(loc.name)} · last 30 days. Only your own visitors; nothing is sold or shared.</p><div id="ins"><p class="muted">Loading...</p></div>`);
   const d = await api(`/api/kiosks/${loc.id}/checkins`);
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const today = d.checkins.filter((c) => c.created_at >= start.getTime());
@@ -433,12 +497,29 @@ function renderSettings() {
         <div class="panel"><h2 style="font-size:24px">Appearance</h2><div class="seg" id="themes"><button type="button" data-th="warm" class="${theme() === "warm" ? "on" : ""}">Warm</button><button type="button" data-th="blue" class="${theme() === "blue" ? "on" : ""}">Blue</button></div></div>
         <div class="panel"><h2 style="font-size:24px">Payments</h2>
           <p class="muted" style="margin:0">${me.payments ? "Card payments run through <strong>Stripe test mode</strong>. Customers pay on their phone; no real money moves." : "Stripe isn't connected, so the phone Pay button is a demo. Add a Stripe test key to take test card payments."}</p></div>
+        ${me.perms.staff ? `<div class="panel"><h2 style="font-size:24px">Connect your systems</h2>
+          <p class="muted">Formify sends every check-in, update, payment and message to your webhook: connect Zapier or Make to reach your booking tool, POS, CRM or a Google Sheet, or point it at your own software. Signed with a secret so you can verify it.</p>
+          <form id="whf"><label for="wh">Webhook URL</label><input id="wh" type="url" placeholder="https://hooks.zapier.com/..." autocomplete="off">
+            <div class="row" style="gap:8px;margin-top:10px"><button>Save</button><button type="button" class="btn-alt" id="whtest">Send test event</button></div>
+            <p class="small" id="whout" style="margin:8px 0 0"></p></form>
+          <p class="muted small" style="margin:10px 0 0">Also: CSV export in Insights, and the MCP server below for AI assistants.</p></div>` : ""}
         <div class="panel"><h2 style="font-size:24px">AI assistants can check people in</h2>
           <p class="muted">Customers' own assistants (like Claude) can find you and check them in through Formify's MCP server, with the customer's confirmation.</p>
           <pre style="white-space:pre-wrap;background:var(--cream);padding:12px;border-radius:10px;font-size:13px">claude mcp add --transport http formify ${esc(location.origin)}/mcp</pre></div>
       </div>
     </div>`);
   $("#out").onclick = async () => { await api("/api/biz/logout", { method: "POST" }); me = null; renderAuth(); };
+  if (me.perms.staff) {
+    api("/api/biz/integrations").then((x) => { $("#wh").value = x.webhook_url || ""; }).catch(() => {});
+    $("#whf").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api("/api/biz/integrations", { method: "POST", body: { webhook_url: $("#wh").value } });
+        $("#whout").innerHTML = r.secret ? `Saved. Signing secret (shown once): <code>${esc(r.secret)}</code>. Verify the <code>x-formify-signature</code> header (HMAC-SHA256 of the body).` : "Webhook removed.";
+      } catch (err) { $("#whout").textContent = err.message; }
+    });
+    $("#whtest").onclick = async () => { try { await api("/api/biz/integrations", { method: "POST", body: { test: true } }); $("#whout").textContent = "Test event sent."; } catch (err) { $("#whout").textContent = err.message; } };
+  }
   root.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => { setTheme(b.dataset.th); renderSettings(); });
   $("#pw").addEventListener("submit", async (e) => {
     e.preventDefault();
