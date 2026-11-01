@@ -83,7 +83,111 @@ claude mcp add --transport http formify https://getformify.pages.dev/mcp
 ```
 Then ask Claude: "Find a ski rental on Formify and check me in for tomorrow."
 
+## Live CRM insights
+
+### Browser-only demo mode
+
+Turn on **Settings > Demo mode > Use demo data**, or choose **Explore with demo
+data** on the business sign-in screen. `/business.html?demo=1#live` also opens the
+demo directly. It includes fictional queues, messages, payments, alerts, customer
+cohorts, feedback, forms, business pages, team members and integration settings.
+Sample actions, including approval requests and email invites, update browser storage,
+never D1, real customers, Stripe, mail apps or webhooks.
+Unknown demo actions fail locally instead of falling back to the real API. Password
+changes are disabled. The demo switch and selected location use separate keys from
+the real account; exiting preserves the real sign-in session and location choice.
+
+Use **Reset sample data** in Settings to restore the examples. Sample changes
+persist on this browser; seeded history refreshes after twelve hours. Customer-facing
+demo links, QR codes and CSV downloads stay in the sandbox. Document import shows
+an explicitly labeled sample conversion and does not read or upload the chosen file.
+Demo form previews use local sample autofill instead of microphone, camera or AI calls.
+
+### Snow Valley concept
+
+`/demo.html?view=kiosk&id=demo_snow_valley` is a shareable, account-free mock of an
+individual rental pre-check-in. It is inspired by Snow Valley Barrie's public
+[rental equipment guide](https://www.skisnowvalley.com/learn-to-ski/1st-timer-guide/rental-equipment-tips/)
+and [group rental form](https://www.skisnowvalley.com/wp-content/uploads/2024/11/2022-Group-Ski-Rental-Form.pdf),
+reviewed October 31, 2026. The guide describes completing paperwork at the rental
+shop and carrying it to the fitting area. The concept demonstrates advance phone
+entry and a structured staff handoff. It is labeled unofficial and is not endorsed
+by Snow Valley. It is not an exact conversion of the group agreement: one renter
+per submission, explicit metric units, and optional contact fields for updates.
+It does not make reservations, collect money, replace the rental agreement, or
+calculate binding settings. Technician fitting and sign-off remain outside the mock.
+Submissions save only in this browser's sample dataset, not to the real company.
+
+### Live analytics
+
+Business > Insights reads live D1 records for the selected location, refreshes every
+30 seconds while visible, and supports 7-, 30- and 90-day windows. It shows visit
+volume and completion, identified customer cohorts, wait times, payment records,
+no-shows, private feedback, check-in channels and anonymous form activity. Follow-up
+cards and a ticket list highlight unread messages, deletion requests, unpaid visits,
+low ratings and pickups ready to complete. Actions open Live for staff to review;
+no customer messages are sent automatically.
+
+`GET /api/kiosks/:id/insights?days=30` requires an owner or manager of that business.
+Queries exclude expired and future visit records, keep data isolated by location,
+and aggregate customer IDs without returning form answers. Charts use UTC and
+include partial days. Repeat customers are signed-in accounts with multiple visit
+records in retained history; anonymous visits are not counted as distinct customers.
+Previous-period comparisons appear only when the full previous period is within
+retention and the location already existed. Missing averages show no value rather
+than a fabricated zero.
+
+Payments are CAD amounts recorded against visits created in the selected period,
+including counter entries and demo/test transactions. Deposits are separate from
+final totals. Anonymous event counts are not presented as a session conversion
+rate, and rebook clicks are not confirmed bookings. CSV export now honors both
+the selected period and the form's retention setting.
+
+No additional migration is required for demo mode or these analytics. The current
+project schema through migration 013 includes approvals, invites and document import. SQL tests execute
+the production queries against SQLite with migrated fixtures covering period
+boundaries, business isolation, customer cohorts and follow-up counts.
+
 ## Deploy
+
+### Document import
+
+In Business > Forms > New form, choose **Import a document**. Recreate an existing
+form or generate questions based on a document. Owners and managers can import
+PDF, DOCX, PNG, JPEG, WebP, UTF-8 TXT/Markdown/CSV, XLSX and ODT files up to 5 MiB.
+Text-based imports are limited to 30,000 extracted characters. The existing form
+format supports five sections, eight questions per section and twelve choices per
+select. Oversized or incomplete conversion results return errors instead of
+silently truncating questions. Unsupported signatures, attachments and conditional
+logic are called out in review notes; they are not implemented by this importer.
+
+The importer uses the existing Workers AI binding: Markdown conversion for rich
+documents, Llama 4 Scout directly for images, and the text model for extracted
+content. It returns a draft to the existing editor, including editable section and
+question instructions, choice options and review notes. Publishing requires the
+owner to confirm they checked the draft. Imports default to forms-only mode with
+no deposits or add-ons. Scans and handwriting need careful review; encrypted PDFs
+and legacy `.doc` files should be exported to a supported format first.
+
+Formify does not persist uploaded originals or extracted text. Files are sent to
+Cloudflare AI for conversion, and only approved form configuration is saved at
+publish time. `migrations_013.sql` adds an atomic per-business limit of five import
+attempts per ten-minute window. Apply it **before deploying this feature**:
+
+```sh
+npx wrangler d1 execute kiosk-setup --remote --file migrations_013.sql
+```
+
+Local contract tests use mocked AI responses; they do not measure live extraction
+quality. Run them with Node 22+ and Python 3:
+
+```sh
+node --test tests/*.test.mjs
+python -m unittest discover -s tests -p "*_test.py"
+```
+
+### Publish
+
 ```
 npx wrangler pages deploy --branch main            # getformify.pages.dev
 npx wrangler pages deploy --branch main --project-name kiosk-setup   # old URL, keeps existing links working

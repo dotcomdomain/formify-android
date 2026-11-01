@@ -6,7 +6,7 @@ import { ownsKiosk, sessionFor, json } from "../../../../lib/auth.js";
 
 const DAY = 86400000;
 
-// Visitor checks in, on the kiosk (joins the queue now) or on their phone (joins when they arrive).
+// Visitor checks in, on the kiosk (joins the queue now) or on their phone (a walk-in line holds their place).
 export async function onRequestPost({ params, request, env, waitUntil }) {
   const config = await loadConfig(env, params.id);
   if (!config) return Response.json({ error: "Kiosk not found" }, { status: 404 });
@@ -30,7 +30,7 @@ export async function onRequestGet({ params, request, env }) {
 
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const { results } = await env.DB.prepare(
-    "SELECT id, ticket, answers, status, created_at, arrived_at, served_at, channel, language, summary, flags, amount_cents, paid_at, pay_method, deposit_cents, deposit_paid_at, delete_status, (SELECT COUNT(*) FROM messages m WHERE m.checkin_id = checkins.id AND m.sender = 'customer' AND m.id > COALESCE(checkins.seen_business, 0)) AS unread FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY COALESCE(arrived_at, created_at)"
+    "SELECT id, ticket, answers, status, created_at, arrived_at, line_at, served_at, channel, language, summary, flags, amount_cents, paid_at, pay_method, deposit_cents, deposit_paid_at, delete_status, (SELECT COUNT(*) FROM messages m WHERE m.checkin_id = checkins.id AND m.sender = 'customer' AND m.id > COALESCE(checkins.seen_business, 0)) AS unread, (SELECT COUNT(*) FROM approvals a WHERE a.checkin_id = checkins.id AND a.status = 'pending') AS approvals_open, (SELECT COALESCE(SUM(a.amount_cents), 0) FROM approvals a WHERE a.checkin_id = checkins.id AND a.status = 'approved') AS approved_cents FROM checkins WHERE kiosk_id = ? AND created_at >= ? ORDER BY line_at"
   ).bind(params.id, start.getTime() - DAY).all();
   const audit = (await env.DB.prepare("SELECT action, detail, at FROM audit WHERE kiosk_id = ? ORDER BY at DESC LIMIT 30").bind(params.id).all()).results;
 

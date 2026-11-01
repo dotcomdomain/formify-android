@@ -16,7 +16,7 @@ export async function onRequestPost({ request, env }) {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO kiosks (id, config, created_at, updated_at, owner_id) VALUES (?, ?, ?, ?, ?)").bind(id, JSON.stringify(clean), now, now, owner),
     env.DB.prepare("INSERT INTO audit (kiosk_id, action, detail, at) VALUES (?, ?, ?, ?)")
-      .bind(id, "published", `${member.name} (${member.role}) approved and published (${source === "ai" ? "AI-generated" : "template"}). ${clean.steps.reduce((n, s) => n + s.fields.length, 0)} fields, retention ${clean.retention_days} days.`, now)
+      .bind(id, "published", `${member.name} (${member.role}) approved and published (${source === "document" ? "document import" : source === "ai" ? "AI-generated" : "template"}). ${clean.steps.reduce((n, s) => n + s.fields.length, 0)} fields, retention ${clean.retention_days} days.`, now)
   ]);
   return json({ id });
 }

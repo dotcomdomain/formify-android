@@ -20,11 +20,13 @@ const writeProfile = (p) => { try { localStorage.setItem(PROFILE_KEY, JSON.strin
 function fieldHtml(f, value) {
   const req = f.required ? " required" : "";
   const v = value ?? "";
-  if (f.type === "checkbox") return `<label class="check"><input type="checkbox" name="${f.id}"${value ? " checked" : ""}> ${esc(f.label)}</label>`;
-  const label = `<label for="f_${f.id}">${esc(f.label)}${f.required ? "" : ' <span class="muted small">(optional)</span>'}</label>`;
-  if (f.type === "select") return label + `<select id="f_${f.id}" name="${f.id}"${req}><option value="">Choose one</option>${f.options.map((o) => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
-  if (f.type === "textarea") return label + `<textarea id="f_${f.id}" name="${f.id}" rows="3"${req}>${esc(v)}</textarea>`;
-  return label + `<input id="f_${f.id}" name="${f.id}" type="${f.type}" value="${esc(v)}"${req}${f.type === "number" ? ' min="0" inputmode="numeric"' : ""}>`;
+  const description = f.description ? `<p class="muted small" id="d_${f.id}" style="white-space:pre-wrap">${esc(f.description)}</p>` : "";
+  const described = f.description ? ` aria-describedby="d_${f.id}"` : "";
+  if (f.type === "checkbox") return `<label class="check"><input type="checkbox" name="${f.id}"${req}${described}${value ? " checked" : ""}> ${esc(f.label)}</label>${description}`;
+  const label = `<label for="f_${f.id}">${esc(f.label)}${f.required ? "" : ' <span class="muted small">(optional)</span>'}</label>${description}`;
+  if (f.type === "select") return label + `<select id="f_${f.id}" name="${f.id}"${req}${described}><option value="">Choose one</option>${f.options.map((o) => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  if (f.type === "textarea") return label + `<textarea id="f_${f.id}" name="${f.id}" rows="3"${req}${described}>${esc(v)}</textarea>`;
+  return label + `<input id="f_${f.id}" name="${f.id}" type="${f.type}" value="${esc(v)}"${req}${described}${f.type === "number" ? ' min="0" inputmode="numeric"' : ""}>`;
 }
 
 async function shrink(file, max = 1024) {
@@ -57,7 +59,7 @@ async function speak(text, lang) {
   }
 }
 
-export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, onArrive, onDone, qrUrl, idleMs = 60000, startAt = "welcome", preferChat = false, initialAnswers = {} } = {}) {
+export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, onArrive, onDone, qrUrl, idleMs = 60000, startAt = "welcome", preferChat = false, initialAnswers = {}, demo = false } = {}) {
   const fields = config.steps.flatMap((s) => s.fields);
   const phone = mode === "phone";
   let s;
@@ -91,7 +93,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
   }
   const visibleFields = () => (s.screen === "review" ? fields : s.screen === "form" ? config.steps[s.step].fields : []);
 
-  const aiBar = () => `
+  const aiBar = () => demo ? '<div class="ai-bar"><button class="ai-btn" data-go="demo-fill">Fill sample answers</button><span class="muted small">Local demo. No microphone, camera or AI requests.</span></div>' : `
     <div class="ai-bar">
       <button class="ai-btn" data-go="chat">Talk to the assistant</button>
       <button class="ai-btn" data-go="scan">Scan a card</button>
@@ -159,7 +161,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
         <div class="k-err">${esc(s.error)}</div>
         <div class="k-nav"><button class="k-btn ghost" data-go="welcome">Back</button><button class="k-btn" data-go="arrive">I'm here</button></div>`;
     } else if (s.screen === "consent") {
-      body = `<h2>Before we start</h2><p class="k-sub">${esc(config.consent_text)}</p>
+      body = `<h2>Before we start</h2><p class="k-sub" style="white-space:pre-wrap">${esc(config.consent_text)}</p>
         <label class="check"><input type="checkbox" id="consent"${s.consent ? " checked" : ""}> I agree</label>
         <div class="k-err">${esc(s.error)}</div>
         <div class="k-nav"><button class="k-btn ghost" data-go="welcome">Back</button><button class="k-btn" data-go="form">Continue</button></div>`;
@@ -167,6 +169,7 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
       const st = config.steps[s.step];
       const dots = config.steps.map((_, i) => `<i class="${i <= s.step ? "on" : ""}"></i>`).join("");
       body = `<div class="dots">${dots}</div>${s.step === 0 ? aiBar() : ""}${s.note ? `<div class="ai-note">${esc(s.note)}</div>` : ""}<h2>${esc(st.title)}</h2>
+        ${st.description ? `<p class="k-sub" style="white-space:pre-wrap">${esc(st.description)}</p>` : ""}
         <form onsubmit="return false">${st.fields.map((f) => fieldHtml(f, s.answers[f.id])).join("")}</form>
         <div class="k-err">${esc(s.error)}</div>
         <div class="k-nav"><button class="k-btn ghost" data-go="back">Back</button><button class="k-btn" data-go="next">${s.step === config.steps.length - 1 ? "Check in" : "Next"}</button></div>`;
@@ -351,6 +354,10 @@ export function mountKiosk(root, config, { mode = "kiosk", kioskId, onSubmit, on
     if (!go) return;
     bump();
     s.error = "";
+    if (go === "demo-fill" && demo) {
+      for (const f of fields) s.answers[f.id] = f.type === "checkbox" ? true : f.type === "select" ? f.options[0] : f.type === "date" ? new Date().toISOString().slice(0, 10) : f.type === "number" ? (/height/i.test(f.label) ? 170 : /weight/i.test(f.label) ? 70 : 28) : f.type === "email" ? "alex@example.com" : f.type === "tel" ? "555-0100" : /name/i.test(f.label) ? "Alex Demo" : "Sample only";
+      return draw();
+    }
     if (go === "welcome") return reset();
     if (go === "code") { s.screen = "code"; return draw(); }
     if (go === "arrive") {

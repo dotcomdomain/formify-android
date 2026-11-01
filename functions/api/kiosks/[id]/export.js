@@ -14,8 +14,14 @@ export async function onRequestGet({ params, request, env }) {
   const member = await ownsKiosk(env, request, params.id, "insights");
   if (!member) return new Response("Only the owner or a manager can export.", { status: 403 });
   const config = await loadConfig(env, params.id);
+  if (!config) return new Response("Location not found.", { status: 404 });
+  const requested = new URL(request.url).searchParams.get("days");
+  const days = requested === null ? null : Number(requested);
+  if (days !== null && ![7,30,90].includes(days)) return new Response("Choose 7, 30 or 90 days.", { status: 400 });
+  const now = Date.now();
+  const from = now - Math.min(days ?? 365, Math.max(1, Math.min(365, Number(config.retention_days) || 30))) * 86400000;
   const fields = config.steps.flatMap((s) => s.fields);
-  const { results } = await env.DB.prepare("SELECT ticket, status, channel, created_at, arrived_at, served_at, amount_cents, paid_at, pay_method, summary, answers FROM checkins WHERE kiosk_id = ? ORDER BY created_at").bind(params.id).all();
+  const { results } = await env.DB.prepare("SELECT ticket, status, channel, created_at, arrived_at, served_at, amount_cents, paid_at, pay_method, summary, answers FROM checkins WHERE kiosk_id = ? AND created_at >= ? AND created_at < ? ORDER BY created_at").bind(params.id, from, now).all();
   const head = ["Ticket", "Status", "Channel", "Checked in", "Arrived", "Served", "Amount", "Paid", "Paid by", "Handoff note", ...fields.map((f) => f.label)];
   const iso = (t) => (t ? new Date(t).toISOString() : "");
   const lines = [head.map(cell).join(",")].concat(results.map((r) => {
