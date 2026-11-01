@@ -271,8 +271,15 @@ body.app::before {
 .demo-settings { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .demo-settings > div { flex: 1; min-width: min(100%, 240px); }
 .demo-settings p { margin: 0; }
-.demo-toggle { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-.demo-toggle input { width: 22px; height: 22px; accent-color: var(--forest); }
+.demo-toggle { position: relative; display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; margin: 0; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.demo-toggle input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); border: 0; }
+.demo-switch { position: relative; flex: none; width: 48px; height: 28px; border: 1px solid var(--muted); border-radius: 999px; background: var(--sand); transition: background .18s var(--ease), border-color .18s var(--ease); }
+.demo-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--muted); transition: transform .18s var(--ease), background .18s var(--ease); }
+.demo-toggle input:checked + .demo-switch { background: var(--forest); border-color: var(--forest); }
+.demo-toggle input:checked + .demo-switch::after { transform: translateX(20px); background: #fff; }
+.demo-toggle input:focus-visible + .demo-switch { outline: 3px solid var(--forest); outline-offset: 4px; }
+@media (max-width: 600px) { .demo-toggle { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .demo-switch, .demo-switch::after { transition: none; } }
 .demo-lab { position: relative; z-index: 1; }
 .demo-concept-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 36px; margin-top: 28px; align-items: start; }
 .demo-story h1 { font-size: clamp(34px, 4.4vw, 58px); line-height: 1.06; color: var(--forest-ink); }
