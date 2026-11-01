@@ -40,7 +40,7 @@ function renderAuth() {
   clearInterval(poll);
   root.innerHTML = `<div class="auth">
     <section class="pitch">
-      <a class="brand" href="/"><span class="mark" style="color:#fff">Form<i>ify</i></span><span class="tag" style="color:#9fb5a8">for Business</span></a>
+      <a class="brand" href="/"><img class="brand-logo" src="/logo.svg?v=916199d2b9" alt="Formify" width="320" height="80"><span class="tag" style="color:#9fb5a8">for Business</span></a>
       <div>
         <h1>Fortify your business with <em>Formify.</em></h1>
         <p style="font-size:18px;color:#cfdcd3;max-width:460px">Describe your front desk in one sentence. Get an AI check-in that customers fill from their phone, a live queue, staff alerts and payments. Keep your current systems.</p>
@@ -81,7 +81,7 @@ function shell(active, inner) {
   const alerts = me.locations.reduce((n, l) => n + l.alerts, 0);
   root.innerHTML = `<div class="biz">
     <aside class="sidebar">
-      <a class="brand" href="#live"><span class="mark">Form<i>ify</i></span><span class="tag">Business</span></a>
+      <a class="brand" href="#live"><img class="brand-logo" src="/logo.svg?v=916199d2b9" alt="Formify" width="320" height="80"><span class="tag">Business</span></a>
       ${me.locations.length ? `<label class="small" style="color:#9fb5a8;margin:0">Location</label>
         <select id="locsel">${me.locations.map((l) => `<option value="${l.id}"${l.id === loc?.id ? " selected" : ""}>${esc(l.name)}</option>`).join("")}</select>` : ""}
       <nav>${[["live", "Live", alerts], me.perms.forms && ["page", "Page"], me.perms.forms && ["forms", "Forms"], me.perms.insights && ["insights", "Insights"], me.perms.staff && ["people", "People"], ["settings", "Settings"]].filter(Boolean)

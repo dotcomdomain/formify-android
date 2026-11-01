@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=916199d2b9">
+<link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg?v=916199d2b9">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Formify</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,7 +35,8 @@
   .about p { margin: 0; white-space: pre-line; }
   .about p + p { margin-top: 10px; color: var(--muted); }
   footer { margin-top: 26px; font-size: 13.5px; color: var(--muted); }
-  footer a { color: inherit; }
+  footer a { color: inherit; display: inline-flex; vertical-align: middle; margin-left: 6px; }
+  .powered-logo { width: 112px; height: 28px; object-fit: contain; }
   .gone { padding-top: 22vh; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -78,7 +81,7 @@ if (!r.ok) {
     ${acts ? `<div class="acts">${acts}</div>` : ""}
     ${socials ? `<div class="socs">${socials}</div>` : ""}
     ${pr.about || pr.hours ? `<div class="about">${pr.about ? `<p>${esc(pr.about)}</p>` : ""}${pr.hours ? `<p>${esc(pr.hours)}</p>` : ""}</div>` : ""}
-    <footer>Powered by <a href="/">Formify</a></footer>`;
+    <footer>Powered by <a href="/"><img class="powered-logo" src="/logo.svg?v=916199d2b9" alt="Formify" width="320" height="80"></a></footer>`;
   for (const f of p.forms) fetch(`/api/kiosks/${encodeURIComponent(f.id)}/events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "view" }) }).catch(() => {});
 }
 </script>
