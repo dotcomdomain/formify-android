@@ -749,7 +749,7 @@ async function renderPeople() {
 function renderSettings() {
   shell("settings", `<h1>Settings</h1>
     <section class="panel demo-settings" style="margin-top:18px"><div><h2 style="font-size:24px">Demo mode</h2><p class="muted">Explore sample queues, messages, forms, CRM insights, payments and team members. Your real account and customer records stay separate.</p></div>
-      <label class="demo-toggle" for="demo-toggle"><input id="demo-toggle" type="checkbox" role="switch" ${demo.enabled ? "checked" : ""}> Use demo data</label>
+      <label class="demo-toggle" for="demo-toggle"><span>Use demo data</span><input id="demo-toggle" type="checkbox" role="switch" ${demo.enabled ? "checked" : ""}><span class="demo-switch" aria-hidden="true"></span></label>
       ${demo.enabled ? '<button id="reset-demo" type="button" class="btn-alt">Reset sample data</button>' : ""}</section>
     <div class="grid2" style="gap:22px;margin-top:18px">
       <div class="panel"><h2 style="font-size:24px">Your login</h2><p><strong>${esc(me.member.name)}</strong> · ${esc(me.member.role)}<br><span class="muted">${esc(me.member.email)} · ${esc(me.business.name)}</span></p>
