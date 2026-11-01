@@ -1,5 +1,13 @@
 plugins { id 'com.android.application' }
 
+// Signing credentials remain outside the repository. Without this variable,
+// assembleRelease produces an unsigned artifact rather than using a debug key.
+def releaseSigningPath = providers.environmentVariable('FORMIFY_SIGNING_PROPERTIES').orNull
+def releaseSigning = new Properties()
+if (releaseSigningPath) {
+    file(releaseSigningPath).withInputStream { releaseSigning.load(it) }
+}
+
 android {
     namespace 'app.formify.android'
     compileSdk 35
@@ -8,14 +16,24 @@ android {
         applicationId 'app.formify.android'
         minSdk 26
         targetSdk 35
-        versionCode 6
-        versionName '1.0.5'
+        versionCode 7
+        versionName '1.0.6'
         testInstrumentationRunner 'app.formify.android.SmokeInstrumentation'
+    }
+    signingConfigs {
+        if (releaseSigningPath) {
+            release {
+                storeFile file(releaseSigning.getProperty('storeFile'))
+                storePassword releaseSigning.getProperty('storePassword')
+                keyAlias releaseSigning.getProperty('keyAlias')
+                keyPassword releaseSigning.getProperty('keyPassword')
+            }
+        }
     }
     buildTypes {
         release {
             minifyEnabled false
-            // Configure a private release signing key before distributing through a store.
+            if (releaseSigningPath) signingConfig signingConfigs.release
         }
     }
     compileOptions {

@@ -2,7 +2,7 @@
 
 An Android app for the existing [Formify service](https://getformify.pages.dev/), for Android 8.0 and later.
 
-The app hosts the production mobile website in an Android WebView. It uses the actual cream, forest and clay theme, Young Serif and Bricolage Grotesque typography, and Search, Assistant, Visits and You screens. Business pages and the business dashboard also open inside the app. HTML, base styling and backend APIs load from the live service. The customer module and form renderer are bundled from `public/js/consumer.js` and `public/render.js`, so app interaction fixes can ship without deploying the website. Both were synchronized with the live client before packaging, retaining the current copy and voice-caption behavior. `public/assistant.css` is also packaged for the in-form chat layout. Future code updates to these bundled resources require rebuilding the APK. This is not a separate native rewrite or a bundled offline copy.
+The app hosts the production mobile website in an Android WebView. It uses the current Formify branding, warm and blue themes, Young Serif and Bricolage Grotesque typography, and Search, Assistant, Visits and You screens. Business pages and the business dashboard also open inside the app. HTML, base styling and backend APIs load from the live service. The customer module and form renderer are bundled from `public/js/consumer.js` and `public/render.js`, so app interaction fixes can ship without deploying the website. Version 1.0.6 merges the updated website, including document import, CRM insights, demo mode, approvals and invitations, while preserving the Android-specific interaction fixes. `public/assistant.css` is also packaged for the in-form chat layout. Future code updates to these bundled resources require rebuilding the APK. This is not a separate native rewrite or a bundled offline copy.
 
 ## Android integration
 
@@ -17,6 +17,8 @@ The app hosts the production mobile website in an Android WebView. It uses the a
 - Persistent WebView cookies and local storage for sessions and saved details. Android app storage is separate from Chrome's storage.
 - Voice input asks for Android microphone permission when first used. Typing remains available if permission is denied.
 - Card scans use the Android photo/document picker or an installed camera app. Camera capture uses temporary app-cache files; no broad media/storage permission is requested.
+- Document import accepts PDF, DOCX, images, text, Markdown, CSV, XLSX and ODT through Android's document picker. The camera is offered only for image-only inputs.
+- The launcher icon and native loading screen use the supplied Formify card-and-arrow logo. The browser tab icon has a transparent background.
 - JSON privacy exports open Android's Save As picker, including exports generated as JavaScript blobs. Regular first-party file downloads use Download Manager.
 - Only the exact HTTPS Formify origin stays inside the app. External websites, payments, telephone, email and map links open an appropriate external app. Executable URL schemes are blocked.
 - Native web messages are restricted to the first-party origin and main frame. Web debugging is enabled in debug builds only; app backup is disabled.
@@ -45,7 +47,20 @@ For a local emulator, create a Pixel virtual device with an Android 15 / API 35 
 emulator -avd Formify_Pixel -gpu swiftshader_indirect -no-snapshot
 ```
 
-The debug APK is signed with the local Android development key. Release/store distribution needs your own signing key and normal store setup. No signing secrets are committed.
+Debug APKs use the local Android development key. Version 1.0.6 is built with the release build type and a new private release signing key, with WebView debugging disabled. The previous 1.0.5 download used a different debug certificate, so Android cannot install 1.0.6 over it. Export any local data needed before removing an older installation. No device is uninstalled automatically.
+
+Release signing reads a properties file outside the repository, selected through an environment variable:
+
+```powershell
+$env:FORMIFY_SIGNING_PROPERTIES = 'C:/private/formify/signing.properties'
+.\gradlew.bat testReleaseUnitTest lintRelease assembleRelease
+```
+
+The private file contains `storeFile`, `storePassword`, `keyAlias` and `keyPassword`.
+Back up the keystore and its credentials securely; future APK updates must use the
+same signing key. Without the variable, `assembleRelease` creates an unsigned APK.
+No signing keys or passwords are committed or uploaded with the release. Publishing
+to an app store still requires the store's normal setup.
 
 ## Verification
 

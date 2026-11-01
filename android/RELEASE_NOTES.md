@@ -1,18 +1,26 @@
-# Formify for Android 1.0.5
+# Formify for Android 1.0.6
 
-Download `Formify-Android-v1.0.5.apk` from this release to install or update the app. This is a signed debug APK for direct installation, supporting Android 8.0 and later.
+Download `Formify-Android-v1.0.6-release.apk` for Android 8.0 and later.
 
-This update replaces the system dropdown selector with a themed bottom sheet, softens text-field focus, and redesigns the in-form assistant with a compact header, collapsible progress and a stable composer. Partial answers are preserved when switching between a form and its assistant. Opening the assistant no longer triggers validation on unfinished fields.
+- Updated launcher and native loading-screen branding from the supplied Formify SVG.
+- Removed the white tile behind the website's browser tab icon.
+- Merged the latest website and backend source, including document import, live CRM insights, browser-only demo mode, the unofficial Snow Valley mock form, approval requests and invitations.
+- Updated Android's document picker to support PDF, DOCX and the other import formats. Camera capture remains available for image-only inputs.
+- Preserved the app's custom controls, theme transitions, draft handling and assistant layout.
 
-It also includes sliding navigation highlights, press/ripple feedback, smooth warm/blue palette transitions, and in-place account-mode switching in You. Reduced-motion settings are respected.
+This is a release build, signed with a new private release key. The previous 1.0.5
+APK used a different debug certificate, so Android cannot update that installation
+in place. Export any local information you need before uninstalling the older app.
+The new private key and its credentials are stored outside Git and are not included
+in the download.
 
-Validation: the Gradle wrapper build, both unit tests and Android lint pass. The final APK passes 27 focused emulator checks across motion, account/theme state, custom controls and the in-form assistant, including narrow and keyboard-sized layouts. Earlier builds were also tested on the connected Samsung SM-N960F; the final update was tested on the emulator after the phone was unplugged.
+The app continues to use the live Formify website and backend. Saved details are
+not an offline copy of online forms. Demo mode uses fictional data and does not
+contact customers or charge payments.
 
-Release files:
+Validated with five Android unit tests, release lint, 32 JavaScript tests and seven
+Python tests. APK signature and ZIP alignment checks passed. The bundled client
+scripts match the merged source. This release has not been tested on a device.
 
-- `Formify-Android-v1.0.5.apk`: installable Android app.
-- `Formify-Demo.mp4`: edited 50-second portrait demo, filmed with version 1.0.2 before the later dropdown and in-form chat refinements.
-- `Formify-Demo-Project.zip`: original footage, editable recording/editing scripts, fonts and licenses, caption sources and intermediate production files.
-- `SHA256SUMS.txt`: checksums for the downloadable files.
-
-The repository includes the Android source, original web/backend source, build instructions, verification scripts and screenshots. The live website/backend is still used by the app; this release does not deploy or change that hosted service.
+Release certificate SHA-256:
+`21630d39f3d15eb84e5382e8c06c8cda3c763575846ca8418f2c88d92eaec51a`

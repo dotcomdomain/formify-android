@@ -37,6 +37,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -130,7 +131,7 @@ public final class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
         settings.setSupportMultipleWindows(true);
-        settings.setUserAgentString(settings.getUserAgentString() + " FormifyAndroid/1.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " FormifyAndroid/" + BuildConfig.VERSION_NAME);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false);
         installMotionAtDocumentStart();
@@ -245,13 +246,16 @@ public final class MainActivity extends Activity {
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
-                Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*")
+                String[] types = UploadTypes.mimeTypes(params.getAcceptTypes());
+                boolean imagesOnly = UploadTypes.imagesOnly(types);
+                Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType(types.length == 1 ? types[0] : imagesOnly ? "image/*" : "*/*")
                         .addCategory(Intent.CATEGORY_OPENABLE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                // The current Formify file inputs scan images. Keep the system picker and camera available.
-                Intent chooser = Intent.createChooser(picker, "Scan or choose a card");
+                picker.putExtra(Intent.EXTRA_MIME_TYPES, types);
+                picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+                Intent chooser = Intent.createChooser(picker, imagesOnly ? "Scan or choose an image" : "Choose a document");
                 try {
                     Intent camera = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-                    if (camera.resolveActivity(getPackageManager()) != null) {
+                    if (imagesOnly && camera.resolveActivity(getPackageManager()) != null) {
                         File directory = new File(getCacheDir(), "card-photos");
                         directory.mkdirs();
                         clearCameraPhoto();
@@ -267,7 +271,7 @@ public final class MainActivity extends Activity {
                     fileCallback.onReceiveValue(null);
                     fileCallback = null;
                     clearCameraPhoto();
-                    toast("No photo picker is available on this device.");
+                    toast("No file picker is available on this device.");
                 }
                 return true;
             }
@@ -377,12 +381,11 @@ public final class MainActivity extends Activity {
         notice.setGravity(Gravity.CENTER);
         notice.setPadding(dp(32), dp(32), dp(32), dp(32));
         notice.setBackgroundColor(CREAM);
-        TextView brand = new TextView(this);
-        brand.setText(R.string.app_name);
-        brand.setTextSize(38);
-        brand.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-        brand.setTextColor(FOREST);
-        notice.addView(brand);
+        ImageView brand = new ImageView(this);
+        brand.setImageResource(R.drawable.formify_logo);
+        brand.setContentDescription(getString(R.string.app_name));
+        brand.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        notice.addView(brand, new LinearLayout.LayoutParams(-1, dp(70)));
         noticeTitle = new TextView(this);
         noticeTitle.setText(R.string.loading_title);
         noticeTitle.setTextSize(24);
@@ -493,8 +496,14 @@ public final class MainActivity extends Activity {
         if (request == PICK_FILE) {
             Uri[] files = null;
             if (result == RESULT_OK) {
-                Uri picked = data == null ? null : data.getData();
-                files = picked != null ? new Uri[]{picked} : cameraUri == null ? null : new Uri[]{cameraUri};
+                ClipData selected = data == null ? null : data.getClipData();
+                if (selected != null && selected.getItemCount() > 0) {
+                    files = new Uri[selected.getItemCount()];
+                    for (int i = 0; i < selected.getItemCount(); i++) files[i] = selected.getItemAt(i).getUri();
+                } else {
+                    Uri picked = data == null ? null : data.getData();
+                    files = picked != null ? new Uri[]{picked} : cameraUri == null ? null : new Uri[]{cameraUri};
+                }
             }
             if (fileCallback != null) fileCallback.onReceiveValue(files);
             fileCallback = null;
