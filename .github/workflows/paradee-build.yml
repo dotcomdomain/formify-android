@@ -33,8 +33,8 @@ jobs:
           python tools/make_lexicon.py cmudict.dict
       - name: Install Android SDK 35
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
       - name: Compile signed debug APK
         working-directory: paradee-ci
         run: gradle --no-daemon :app:assembleDebug --stacktrace
