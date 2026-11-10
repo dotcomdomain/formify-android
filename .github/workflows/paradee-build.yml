@@ -35,6 +35,10 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+      - name: Fix voice service visibility
+        working-directory: paradee-ci
+        run: |
+          sed -i -e 's/@Override protected List<Voice> onGetVoices()/@Override public List<Voice> onGetVoices()/' -e 's/@Override protected String onGetDefaultVoiceNameFor(/@Override public String onGetDefaultVoiceNameFor(/' -e 's/@Override protected int onIsValidVoiceName(/@Override public int onIsValidVoiceName(/' -e 's/@Override protected int onLoadVoice(/@Override public int onLoadVoice(/' app/src/main/java/app/paradee/tts/ParadeeTtsService.java
       - name: Compile signed debug APK
         working-directory: paradee-ci
         run: gradle --no-daemon :app:assembleDebug --stacktrace
