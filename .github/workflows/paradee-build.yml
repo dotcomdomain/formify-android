@@ -39,9 +39,40 @@ jobs:
         working-directory: paradee-ci
         run: |
           sed -i -e 's/@Override protected List<Voice> onGetVoices()/@Override public List<Voice> onGetVoices()/' -e 's/@Override protected String onGetDefaultVoiceNameFor(/@Override public String onGetDefaultVoiceNameFor(/' -e 's/@Override protected int onIsValidVoiceName(/@Override public int onIsValidVoiceName(/' -e 's/@Override protected int onLoadVoice(/@Override public int onLoadVoice(/' app/src/main/java/app/paradee/tts/ParadeeTtsService.java
+      - name: Preserve compressed pronunciation asset
+        working-directory: paradee-ci
+        run: |
+          mv app/src/main/assets/lexicon.tsv.gz app/src/main/assets/lexicon.dat
+          sed -i 's/lexicon.tsv.gz/lexicon.dat/' app/src/main/java/app/paradee/tts/ParadeeSynthesizer.java
+          sed -i 's/versionCode 1/versionCode 2/; s/versionName '\''0.1.0'\''/versionName '\''0.1.1'\''/' app/build.gradle
+          python - <<'PY'
+          import gzip
+          from pathlib import Path
+          p = Path('app/src/main/assets/lexicon.dat')
+          with gzip.open(p, 'rt', encoding='utf-8') as f:
+              data = f.read()
+          assert data.count('\\n') > 120000, "Invalid pronunciation dictionary"
+          print("Pronunciation dictionary ready:", data.count('\\n'), "entries")
+          PY
       - name: Compile signed debug APK
         working-directory: paradee-ci
         run: gradle --no-daemon :app:assembleDebug --stacktrace
+      - name: Verify APK contains readable compressed lexicon
+        working-directory: paradee-ci
+        run: |
+          python - <<'PY'
+          import gzip, io, zipfile
+          p = 'app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(p) as z:
+              assets = [x for x in z.namelist() if x.startswith("assets/")]
+              assert 'assets/lexicon.dat' in assets, assets
+              assert 'assets/lexicon.tsv' not in assets, assets
+              with gzip.open(io.BytesIO(z.read('assets/lexicon.dat')), 'rt', encoding='utf-8') as f:
+                  entries = sum(1 for _ in f)
+              assert entries >= 120000, entries
+              print(f"APK verified: {entries} dictionary entries, valid gzip payload.")
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
