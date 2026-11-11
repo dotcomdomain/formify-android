@@ -51,8 +51,8 @@ jobs:
           p = Path('app/src/main/assets/lexicon.dat')
           with gzip.open(p, 'rt', encoding='utf-8') as f:
               data = f.read()
-          assert data.count('\\n') > 120000, "Invalid pronunciation dictionary"
-          print("Pronunciation dictionary ready:", data.count('\\n'), "entries")
+          assert len(data.splitlines()) > 120000, "Invalid pronunciation dictionary"
+          print("Pronunciation dictionary ready:", len(data.splitlines()), "entries")
           PY
       - name: Compile signed debug APK
         working-directory: paradee-ci
